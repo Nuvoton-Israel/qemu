@@ -24,6 +24,7 @@
 #include "hw/core/loader.h"
 #include "hw/core/qdev.h"
 #include "hw/core/qdev-properties.h"
+#include "hw/nvram/eeprom_at24c.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/datadir.h"
@@ -188,6 +189,7 @@ static void npcm845_evb_i2c_init(NPCM8xxState *soc)
 {
     /* tmp100 temperature sensor on SVB, tmp105 is compatible */
     i2c_slave_create_simple(npcm8xx_i2c_get_bus(soc, 6), "tmp105", 0x48);
+    at24c_eeprom_init(npcm8xx_i2c_get_bus(soc, 1), 0x50, 262144);
 }
 
 static void npcm845_evb_fan_init(NPCM8xxMachine *machine, NPCM8xxState *soc)
