@@ -20,7 +20,7 @@
 #include "hw/core/split-irq.h"
 #include "hw/cpu/cluster.h"
 #include "hw/gpio/npcm7xx_gpio.h"
-#include "hw/i2c/npcm7xx_smbus.h"
+#include "hw/i2c/npcm8xx_smbus.h"
 #include "hw/intc/arm_gic_common.h"
 #include "hw/mem/npcm_mc.h"
 #include "hw/misc/npcm_clk.h"
@@ -99,7 +99,7 @@ struct NPCM8xxState {
     NPCMMCState         mc;
     NPCM7xxRNGState     rng;
     NPCM7xxGPIOState    gpio[8];
-    NPCM7xxSMBusState   smbus[27];
+    NPCM8xxSMBusState   smbus[27];
     EHCISysBusState     ehci[2];
     OHCISysBusState     ohci[2];
     NPCM7xxFIUState     fiu[3];
