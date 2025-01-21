@@ -168,6 +168,11 @@ stm32_rcc_write(uint64_t addr, uint64_t data) "reg write: addr: 0x%" PRIx64 " va
 stm32_rcc_pulse_enable(int line, int level) "Enable: %d to %d"
 stm32_rcc_pulse_reset(int line, int level) "Reset: %d to %d"
 
+# npcm8xx_sha.c
+npcm8xx_sha_read(uint64_t offset, uint32_t value, unsigned size) "offset: 0x%04" PRIx64 " value: 0x%02" PRIx32 " size: %u"
+npcm8xx_sha_write(uint64_t offset, uint32_t value, unsigned size) "offset: 0x%04" PRIx64 " value: 0x%02" PRIx32 " size: %u"
+
+
 # stm32f4xx_syscfg.c
 stm32f4xx_syscfg_set_irq(int gpio, int line, int level) "Interrupt: GPIO: %d, Line: %d; Level: %d"
 stm32f4xx_pulse_exti(int irq) "Pulse EXTI: %d"

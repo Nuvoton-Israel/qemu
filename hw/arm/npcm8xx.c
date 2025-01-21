@@ -45,15 +45,13 @@
 #define NPCM8XX_GICC_BA         0xdfffa000
 
 /* Core system modules. */
-
 #define NPCM8XX_CPUP_BA         0xf03fe000
 #define NPCM8XX_GCR_BA          0xf0800000
 #define NPCM8XX_CLK_BA          0xf0801000
 #define NPCM8XX_MC_BA           0xf0824000
 #define NPCM8XX_RNG_BA          0xf000b000
 #define NPCM8XX_TIPCTL_BA       0xf080d000
-
-
+#define NPCM8XX_SHA_BA          (0xf085a000)
 
 /* ADC Module */
 #define NPCM8XX_ADC_BA          0xf000c000
@@ -472,7 +470,10 @@ static void npcm8xx_init(Object *obj)
     object_initialize_child(obj, "pcs", &s->pcs, TYPE_NPCM_PCS);
 
     object_initialize_child(obj, "mmc", &s->mmc, TYPE_NPCM7XX_SDHCI);
+
     object_initialize_child(obj, "pspi", &s->pspi, TYPE_NPCM_PSPI);
+
+    object_initialize_child(obj, "sha", &s->sha, TYPE_NPCM8XX_SHA);
 }
 
 static void npcm8xx_realize(DeviceState *dev, Error **errp)
@@ -783,6 +784,10 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->pspi), 0,
             npcm8xx_irq(s, NPCM8XX_PSPI_IRQ));
 
+    /* SHA */
+    sysbus_realize(SYS_BUS_DEVICE(&s->sha), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->sha), 0, NPCM8XX_SHA_BA);
+
     create_unimplemented_device("npcm8xx.shm",          0xc0001000,   4 * KiB);
     create_unimplemented_device("npcm8xx.gicextra",     0xdfffa000,  24 * KiB);
     create_unimplemented_device("npcm8xx.vdmx",         0xe0800000,   4 * KiB);
@@ -832,7 +837,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.aes",          0xf0858000,   4 * KiB);
     create_unimplemented_device("npcm8xx.des",          0xf0859000,   4 * KiB);
     create_unimplemented_device("npcm8xx.sha",          0xf085a000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.pci_mbox2",    0xf0868000,  64 * KiB);
+    create_unimplemented_device("npcm8xx.pcimbx2",      0xf0868000,  32 * KiB);
     create_unimplemented_device("npcm8xx.i3c0",         0xfff10000,   4 * KiB);
     create_unimplemented_device("npcm8xx.i3c1",         0xfff11000,   4 * KiB);
     create_unimplemented_device("npcm8xx.i3c2",         0xfff12000,   4 * KiB);
