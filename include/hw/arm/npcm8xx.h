@@ -30,6 +30,7 @@
 #include "hw/misc/npcm7xx_pwm.h"
 #include "hw/misc/npcm7xx_rng.h"
 #include "hw/net/npcm7xx_emc.h"
+#include "hw/misc/npcm_sha.h"
 #include "hw/nvram/npcm7xx_otp.h"
 #include "hw/sd/npcm7xx_sdhci.h"
 #include "hw/timer/npcm7xx_timer.h"
@@ -101,6 +102,7 @@ struct NPCM8xxState {
     NPCM7xxFIUState     fiu[3];
     NPCM7xxSDHCIState   mmc;
     NPCM8xxTIPCTLState     tipctl;
+    NPCM8xxSHAState     sha;
 };
 
 struct NPCM8xxClass {

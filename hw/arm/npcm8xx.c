@@ -52,8 +52,7 @@
 #define NPCM8XX_MC_BA           0xf0824000
 #define NPCM8XX_RNG_BA          0xf000b000
 #define NPCM8XX_TIPCTL_BA       0xf080d000
-
-
+#define NPCM8XX_SHA_BA          (0xf085a000)
 
 /* ADC Module */
 #define NPCM8XX_ADC_BA          0xf000c000
@@ -446,6 +445,7 @@ static void npcm8xx_init(Object *obj)
     }
 
     object_initialize_child(obj, "mmc", &s->mmc, TYPE_NPCM7XX_SDHCI);
+    object_initialize_child(obj, "sha", &s->sha, TYPE_NPCM8XX_SHA);
 }
 
 static void npcm8xx_realize(DeviceState *dev, Error **errp)
@@ -725,6 +725,12 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->mmc), 0, NPCM8XX_MMC_BA);
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->mmc), 0,
             npcm8xx_irq(s, NPCM8XX_MMC_IRQ));
+
+
+
+    /* SHA */
+    sysbus_realize(SYS_BUS_DEVICE(&s->sha), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->sha), 0, NPCM8XX_SHA_BA);
 
 
     create_unimplemented_device("npcm8xx.shm",          0xc0001000,   4 * KiB);
