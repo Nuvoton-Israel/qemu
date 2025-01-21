@@ -29,6 +29,7 @@
 #include "hw/misc/npcm7xx_mft.h"
 #include "hw/misc/npcm7xx_pwm.h"
 #include "hw/misc/npcm7xx_rng.h"
+#include "hw/misc/npcm_sha.h"
 #include "hw/net/npcm_gmac.h"
 #include "hw/net/npcm_pcs.h"
 #include "hw/nvram/npcm7xx_otp.h"
@@ -106,7 +107,7 @@ struct NPCM8xxState {
     NPCM7xxSDHCIState   mmc;
     NPCMPSPIState    pspi;
     NPCM8xxTIPCTLState     tipctl;
-
+    NPCM8xxSHAState     sha;
 };
 
 struct NPCM8xxClass {
