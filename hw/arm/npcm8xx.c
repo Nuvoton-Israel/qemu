@@ -520,7 +520,7 @@ static void npcm8xx_init(Object *obj)
 
     object_initialize_child(obj, "mmc", &s->mmc, TYPE_NPCM7XX_SDHCI);
 
-    object_initialize_child(obj, "pspi", &s->pspi, TYPE_NPCM_PSPI);
+    object_initialize_child(obj, "pspi", &s->pspi, TYPE_NPCM8XX_PSPI);
 
     object_initialize_child(obj, "sha", &s->sha, TYPE_NPCM8XX_SHA);
 }
