@@ -21,8 +21,8 @@
 #include "hw/ide/pci.h"
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/ppc/ppc.h"
-#include "sysemu/qtest.h"
-#include "sysemu/reset.h"
+#include "system/qtest.h"
+#include "system/reset.h"
 #include "kvm_ppc.h"
 
 #define BUS_FREQ_HZ 100000000
@@ -153,8 +153,9 @@ static void amigaone_init(MachineState *machine)
     object_property_add_alias(OBJECT(machine), "rtc-time",
                               object_resolve_path_component(via, "rtc"),
                               "date");
-    qdev_connect_gpio_out(DEVICE(via), 0,
-                          qdev_get_gpio_in(DEVICE(cpu), PPC6xx_INPUT_INT));
+    qdev_connect_gpio_out_named(DEVICE(via), "intr", 0,
+                                qdev_get_gpio_in(DEVICE(cpu),
+                                PPC6xx_INPUT_INT));
     for (i = 0; i < PCI_NUM_PINS; i++) {
         qdev_connect_gpio_out(dev, i, qdev_get_gpio_in_named(DEVICE(via),
                                                              "pirq", i));

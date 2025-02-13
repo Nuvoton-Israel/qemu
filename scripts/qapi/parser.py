@@ -19,6 +19,7 @@ import os
 import re
 from typing import (
     TYPE_CHECKING,
+    Any,
     Dict,
     List,
     Mapping,
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
 _ExprValue = Union[List[object], Dict[str, object], str, bool]
 
 
-class QAPIExpression(Dict[str, object]):
+class QAPIExpression(Dict[str, Any]):
     # pylint: disable=too-few-public-methods
     def __init__(self,
                  data: Mapping[str, object],
@@ -447,7 +448,7 @@ class QAPISchemaParser:
         indent = must_match(r'\s*', line).end()
         if not indent:
             return line
-        doc.append_line(line[indent:])
+        doc.append_line(line)
         prev_line_blank = False
         while True:
             self.accept(False)
@@ -464,7 +465,7 @@ class QAPISchemaParser:
                     self,
                     "unexpected de-indent (expected at least %d spaces)" %
                     indent)
-            doc.append_line(line[indent:])
+            doc.append_line(line)
             prev_line_blank = True
 
     def get_doc_paragraph(self, doc: 'QAPIDoc') -> Optional[str]:
@@ -543,9 +544,37 @@ class QAPISchemaParser:
                         line = self.get_doc_indented(doc)
                     no_more_args = True
                 elif match := re.match(
-                        r'(Returns|Since|Notes?|Examples?|TODO): *',
-                        line):
+                        r'(Returns|Errors|Since|Notes?|Examples?|TODO)'
+                        r'(?!::): *',
+                        line,
+                ):
                     # tagged section
+
+                    # Note: "sections" with two colons are left alone as
+                    # rST markup and not interpreted as a section heading.
+
+                    # TODO: Remove these errors sometime in 2025 or so
+                    # after we've fully transitioned to the new qapidoc
+                    # generator.
+
+                    # See commit message for more markup suggestions O:-)
+                    if 'Note' in match.group(1):
+                        emsg = (
+                            f"The '{match.group(1)}' section is no longer "
+                            "supported. Please use rST's '.. note::' or "
+                            "'.. admonition:: notes' directives, or another "
+                            "suitable admonition instead."
+                        )
+                        raise QAPIParseError(self, emsg)
+
+                    if 'Example' in match.group(1):
+                        emsg = (
+                            f"The '{match.group(1)}' section is no longer "
+                            "supported. Please use the '.. qmp-example::' "
+                            "directive, or other suitable markup instead."
+                        )
+                        raise QAPIParseError(self, emsg)
+
                     doc.new_tagged_section(self.info, match.group(1))
                     text = line[match.end():]
                     if text:
@@ -582,7 +611,7 @@ class QAPISchemaParser:
                 line = self.get_doc_line()
                 first = False
 
-        self.accept(False)
+        self.accept()
         doc.end()
         return doc
 
@@ -607,6 +636,7 @@ class QAPIDoc:
     """
 
     class Section:
+        # pylint: disable=too-few-public-methods
         def __init__(self, info: QAPISourceInfo,
                      tag: Optional[str] = None):
             # section source info, i.e. where it begins
@@ -639,6 +669,11 @@ class QAPIDoc:
         # dicts mapping parameter/feature names to their description
         self.args: Dict[str, QAPIDoc.ArgSection] = {}
         self.features: Dict[str, QAPIDoc.ArgSection] = {}
+        # a command's "Returns" and "Errors" section
+        self.returns: Optional[QAPIDoc.Section] = None
+        self.errors: Optional[QAPIDoc.Section] = None
+        # "Since" section
+        self.since: Optional[QAPIDoc.Section] = None
         # sections other than .body, .args, .features
         self.sections: List[QAPIDoc.Section] = []
 
@@ -660,14 +695,22 @@ class QAPIDoc:
         self.all_sections.append(section)
 
     def new_tagged_section(self, info: QAPISourceInfo, tag: str) -> None:
-        if tag in ('Returns', 'Since'):
-            for section in self.all_sections:
-                if isinstance(section, self.ArgSection):
-                    continue
-                if section.tag == tag:
-                    raise QAPISemError(
-                        info, "duplicated '%s' section" % tag)
         section = self.Section(info, tag)
+        if tag == 'Returns':
+            if self.returns:
+                raise QAPISemError(
+                    info, "duplicated '%s' section" % tag)
+            self.returns = section
+        elif tag == 'Errors':
+            if self.errors:
+                raise QAPISemError(
+                    info, "duplicated '%s' section" % tag)
+            self.errors = section
+        elif tag == 'Since':
+            if self.since:
+                raise QAPISemError(
+                    info, "duplicated '%s' section" % tag)
+            self.since = section
         self.sections.append(section)
         self.all_sections.append(section)
 
@@ -692,6 +735,7 @@ class QAPIDoc:
 
     def connect_member(self, member: 'QAPISchemaMember') -> None:
         if member.name not in self.args:
+            assert member.info
             if self.symbol not in member.info.pragma.documentation_exceptions:
                 raise QAPISemError(member.info,
                                    "%s '%s' lacks documentation"
@@ -708,13 +752,20 @@ class QAPIDoc:
         self.features[feature.name].connect(feature)
 
     def check_expr(self, expr: QAPIExpression) -> None:
-        if 'command' not in expr:
-            sec = next((sec for sec in self.sections
-                        if sec.tag == 'Returns'),
-                       None)
-            if sec:
-                raise QAPISemError(sec.info,
-                                   "'Returns:' is only valid for commands")
+        if 'command' in expr:
+            if self.returns and 'returns' not in expr:
+                raise QAPISemError(
+                    self.returns.info,
+                    "'Returns' section, but command doesn't return anything")
+        else:
+            if self.returns:
+                raise QAPISemError(
+                    self.returns.info,
+                    "'Returns' section is only valid for commands")
+            if self.errors:
+                raise QAPISemError(
+                    self.errors.info,
+                    "'Errors' section is only valid for commands")
 
     def check(self) -> None:
 

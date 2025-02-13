@@ -9,12 +9,12 @@
 #include "migration/qemu-file-types.h"
 #include "migration/vmstate.h"
 #include "scsi/constants.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/runstate.h"
+#include "system/block-backend.h"
+#include "system/blockdev.h"
+#include "system/system.h"
+#include "system/runstate.h"
 #include "trace.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "qemu/cutils.h"
 
 static char *scsibus_get_dev_path(DeviceState *dev);
@@ -384,6 +384,7 @@ SCSIDevice *scsi_bus_legacy_add_drive(SCSIBus *bus, BlockBackend *blk,
     DeviceState *dev;
     SCSIDevice *s;
     DriveInfo *dinfo;
+    Error *local_err = NULL;
 
     if (blk_is_sg(blk)) {
         driver = "scsi-generic";
@@ -402,6 +403,14 @@ SCSIDevice *scsi_bus_legacy_add_drive(SCSIBus *bus, BlockBackend *blk,
 
     s = SCSI_DEVICE(dev);
     s->conf = *conf;
+
+    check_boot_index(conf->bootindex, &local_err);
+    if (local_err) {
+        object_unparent(OBJECT(dev));
+        error_propagate(errp, local_err);
+        return NULL;
+    }
+    add_boot_device_path(conf->bootindex, dev, NULL);
 
     qdev_prop_set_uint32(dev, "scsi-id", unit);
     if (object_property_find(OBJECT(dev), "removable")) {
@@ -1934,11 +1943,10 @@ const VMStateDescription vmstate_scsi_device = {
     }
 };
 
-static Property scsi_props[] = {
+static const Property scsi_props[] = {
     DEFINE_PROP_UINT32("channel", SCSIDevice, channel, 0),
     DEFINE_PROP_UINT32("scsi-id", SCSIDevice, id, -1),
     DEFINE_PROP_UINT32("lun", SCSIDevice, lun, -1),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void scsi_device_class_init(ObjectClass *klass, void *data)

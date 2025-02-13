@@ -480,7 +480,7 @@ static void npcm7xx_fiu_enter_reset(Object *obj, ResetType type)
     s->regs[NPCM7XX_FIU_CFG] = 0x0000000b;
 }
 
-static void npcm7xx_fiu_hold_reset(Object *obj)
+static void npcm7xx_fiu_hold_reset(Object *obj, ResetType type)
 {
     NPCM7xxFIUState *s = NPCM7XX_FIU(obj);
     int i;
@@ -538,10 +538,9 @@ static const VMStateDescription vmstate_npcm7xx_fiu = {
     },
 };
 
-static Property npcm7xx_fiu_properties[] = {
+static const Property npcm7xx_fiu_properties[] = {
     DEFINE_PROP_INT32("cs-count", NPCM7xxFIUState, cs_count, 0),
     DEFINE_PROP_SIZE("flash-size", NPCM7xxFIUState, flash_size, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void npcm7xx_fiu_class_init(ObjectClass *klass, void *data)

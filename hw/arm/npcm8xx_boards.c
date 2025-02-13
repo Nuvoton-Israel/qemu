@@ -27,7 +27,7 @@
 #include "qemu/error-report.h"
 #include "qemu/datadir.h"
 #include "qemu/units.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 
 #define NPCM845_EVB_POWER_ON_STRAPS 0x000017ff
 

@@ -26,8 +26,8 @@
 #include "tpm_int.h"
 #include "exec/memory.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/tpm_backend.h"
-#include "sysemu/tpm_util.h"
+#include "system/tpm_backend.h"
+#include "system/tpm_util.h"
 #include "trace.h"
 
 /* tpm backend property */
@@ -46,7 +46,7 @@ static void get_tpm(Object *obj, Visitor *v, const char *name, void *opaque,
 static void set_tpm(Object *obj, Visitor *v, const char *name, void *opaque,
                     Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     TPMBackend *s, **be = object_field_prop_ptr(obj, prop);
     char *str;
 
@@ -66,7 +66,7 @@ static void set_tpm(Object *obj, Visitor *v, const char *name, void *opaque,
 
 static void release_tpm(Object *obj, const char *name, void *opaque)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     TPMBackend **be = object_field_prop_ptr(obj, prop);
 
     if (*be) {
@@ -339,10 +339,11 @@ void tpm_util_show_buffer(const unsigned char *buffer,
     size_t len, i;
     char *line_buffer, *p;
 
-    if (!trace_event_get_state_backends(TRACE_TPM_UTIL_SHOW_BUFFER)) {
+    if (!trace_event_get_state_backends(TRACE_TPM_UTIL_SHOW_BUFFER_CONTENT)) {
         return;
     }
     len = MIN(tpm_cmd_get_size(buffer), buffer_size);
+    trace_tpm_util_show_buffer_header(string, len);
 
     /*
      * allocate enough room for 3 chars per buffer entry plus a
@@ -356,7 +357,7 @@ void tpm_util_show_buffer(const unsigned char *buffer,
         }
         p += sprintf(p, "%.2X ", buffer[i]);
     }
-    trace_tpm_util_show_buffer(string, len, line_buffer);
+    trace_tpm_util_show_buffer_content(line_buffer);
 
     g_free(line_buffer);
 }

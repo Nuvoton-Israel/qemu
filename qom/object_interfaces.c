@@ -3,10 +3,10 @@
 #include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "qapi/qapi-visit-qom.h"
-#include "qapi/qmp/qobject.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qobject.h"
+#include "qobject/qdict.h"
 #include "qapi/qmp/qerror.h"
-#include "qapi/qmp/qjson.h"
+#include "qobject/qjson.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qobject-output-visitor.h"
 #include "qom/object_interfaces.h"
@@ -90,7 +90,7 @@ Object *user_creatable_add_type(const char *type, const char *id,
         return NULL;
     }
 
-    klass = object_class_by_name(type);
+    klass = module_object_class_by_name(type);
     if (!klass) {
         error_setg(errp, "invalid object type: %s", type);
         return NULL;
@@ -108,7 +108,7 @@ Object *user_creatable_add_type(const char *type, const char *id,
     }
 
     assert(qdict);
-    obj = object_new(type);
+    obj = object_new_with_class(klass);
     object_set_properties_from_qdict(obj, qdict, v, &local_err);
     if (local_err) {
         goto out;

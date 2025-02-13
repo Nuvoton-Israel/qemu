@@ -30,11 +30,12 @@
 #include "block/graph-lock.h"
 #include "qemu/main-loop.h"
 #include "qemu/atomic.h"
+#include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "block/raw-aio.h"
 #include "qemu/coroutine_int.h"
 #include "qemu/coroutine-tls.h"
-#include "sysemu/cpu-timers.h"
+#include "system/cpu-timers.h"
 #include "trace.h"
 
 /***********************************************************/
@@ -746,7 +747,7 @@ void aio_context_set_thread_pool_params(AioContext *ctx, int64_t min,
                                         int64_t max, Error **errp)
 {
 
-    if (min > max || !max || min > INT_MAX || max > INT_MAX) {
+    if (min > max || max <= 0 || min < 0 || min > INT_MAX || max > INT_MAX) {
         error_setg(errp, "bad thread-pool-min/thread-pool-max values");
         return;
     }

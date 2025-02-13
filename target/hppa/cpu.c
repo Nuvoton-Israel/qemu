@@ -25,22 +25,81 @@
 #include "cpu.h"
 #include "qemu/module.h"
 #include "exec/exec-all.h"
+#include "exec/translation-block.h"
 #include "fpu/softfloat.h"
 #include "tcg/tcg.h"
+#include "hw/hppa/hppa_hardware.h"
 
 static void hppa_cpu_set_pc(CPUState *cs, vaddr value)
 {
     HPPACPU *cpu = HPPA_CPU(cs);
 
+#ifdef CONFIG_USER_ONLY
+    value |= PRIV_USER;
+#endif
     cpu->env.iaoq_f = value;
     cpu->env.iaoq_b = value + 4;
 }
 
 static vaddr hppa_cpu_get_pc(CPUState *cs)
 {
-    HPPACPU *cpu = HPPA_CPU(cs);
+    CPUHPPAState *env = cpu_env(cs);
 
-    return cpu->env.iaoq_f;
+    return hppa_form_gva_mask(env->gva_offset_mask,
+                         (env->psw & PSW_C ? env->iasq_f : 0),
+                         env->iaoq_f & -4);
+}
+
+void cpu_get_tb_cpu_state(CPUHPPAState *env, vaddr *pc,
+                          uint64_t *pcsbase, uint32_t *pflags)
+{
+    uint32_t flags = 0;
+    uint64_t cs_base = 0;
+
+    /*
+     * TB lookup assumes that PC contains the complete virtual address.
+     * If we leave space+offset separate, we'll get ITLB misses to an
+     * incomplete virtual address.  This also means that we must separate
+     * out current cpu privilege from the low bits of IAOQ_F.
+     */
+    *pc = hppa_cpu_get_pc(env_cpu(env));
+    flags |= (env->iaoq_f & 3) << TB_FLAG_PRIV_SHIFT;
+
+    /*
+     * The only really interesting case is if IAQ_Back is on the same page
+     * as IAQ_Front, so that we can use goto_tb between the blocks.  In all
+     * other cases, we'll be ending the TranslationBlock with one insn and
+     * not linking between them.
+     */
+    if (env->iasq_f != env->iasq_b) {
+        cs_base |= CS_BASE_DIFFSPACE;
+    } else if ((env->iaoq_f ^ env->iaoq_b) & TARGET_PAGE_MASK) {
+        cs_base |= CS_BASE_DIFFPAGE;
+    } else {
+        cs_base |= env->iaoq_b & ~TARGET_PAGE_MASK;
+    }
+
+    /* ??? E, T, H, L bits need to be here, when implemented.  */
+    flags |= env->psw_n * PSW_N;
+    flags |= env->psw_xb;
+    flags |= env->psw & (PSW_W | PSW_C | PSW_D | PSW_P);
+
+#ifdef CONFIG_USER_ONLY
+    flags |= TB_FLAG_UNALIGN * !env_cpu(env)->prctl_unalign_sigbus;
+#else
+    if ((env->sr[4] == env->sr[5])
+        & (env->sr[4] == env->sr[6])
+        & (env->sr[4] == env->sr[7])) {
+        flags |= TB_FLAG_SR_SAME;
+    }
+    if ((env->psw & PSW_W) &&
+        (env->dr[2] & HPPA64_DIAG_SPHASH_ENABLE)) {
+        flags |= TB_FLAG_SPHASH;
+    }
+#endif
+
+    *pcsbase = cs_base;
+    *pflags = flags;
 }
 
 static void hppa_cpu_synchronize_from_tb(CPUState *cs,
@@ -48,45 +107,28 @@ static void hppa_cpu_synchronize_from_tb(CPUState *cs,
 {
     HPPACPU *cpu = HPPA_CPU(cs);
 
-    tcg_debug_assert(!(cs->tcg_cflags & CF_PCREL));
-
-#ifdef CONFIG_USER_ONLY
-    cpu->env.iaoq_f = tb->pc;
-    cpu->env.iaoq_b = tb->cs_base;
-#else
-    /* Recover the IAOQ values from the GVA + PRIV.  */
-    uint32_t priv = (tb->flags >> TB_FLAG_PRIV_SHIFT) & 3;
-    target_ulong cs_base = tb->cs_base;
-    target_ulong iasq_f = cs_base & ~0xffffffffull;
-    int32_t diff = cs_base;
-
-    cpu->env.iasq_f = iasq_f;
-    cpu->env.iaoq_f = (tb->pc & ~iasq_f) + priv;
-    if (diff) {
-        cpu->env.iaoq_b = cpu->env.iaoq_f + diff;
-    }
-#endif
-
+    /* IAQ is always up-to-date before goto_tb. */
     cpu->env.psw_n = (tb->flags & PSW_N) != 0;
+    cpu->env.psw_xb = tb->flags & (PSW_X | PSW_B);
 }
 
 static void hppa_restore_state_to_opc(CPUState *cs,
                                       const TranslationBlock *tb,
                                       const uint64_t *data)
 {
-    HPPACPU *cpu = HPPA_CPU(cs);
+    CPUHPPAState *env = cpu_env(cs);
 
-    cpu->env.iaoq_f = data[0];
-    if (data[1] != (target_ulong)-1) {
-        cpu->env.iaoq_b = data[1];
+    env->iaoq_f = (env->iaoq_f & TARGET_PAGE_MASK) | data[0];
+    if (data[1] != INT32_MIN) {
+        env->iaoq_b = env->iaoq_f + data[1];
     }
-    cpu->env.unwind_breg = data[2];
+    env->unwind_breg = data[2];
     /*
      * Since we were executing the instruction at IAOQ_F, and took some
      * sort of action that provoked the cpu_restore_state, we can infer
      * that the instruction was not nullified.
      */
-    cpu->env.psw_n = 0;
+    env->psw_n = 0;
 }
 
 static bool hppa_cpu_has_work(CPUState *cs)
@@ -121,9 +163,10 @@ void hppa_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
     CPUHPPAState *env = &cpu->env;
 
     cs->exception_index = EXCP_UNALIGN;
+    cpu_restore_state(cs, retaddr);
     hppa_set_ior_and_isr(env, addr, MMU_IDX_MMU_DISABLED(mmu_idx));
 
-    cpu_loop_exit_restore(cs, retaddr);
+    cpu_loop_exit(cs);
 }
 #endif /* CONFIG_USER_ONLY */
 
@@ -151,17 +194,40 @@ static void hppa_cpu_realizefn(DeviceState *dev, Error **errp)
         hppa_ptlbe(&cpu->env);
     }
 #endif
+
+    /* Use pc-relative instructions always to simplify the translator. */
+    tcg_cflags_set(cs, CF_PCREL);
 }
 
 static void hppa_cpu_initfn(Object *obj)
 {
+    CPUHPPAState *env = cpu_env(CPU(obj));
+
+    env->is_pa20 = !!object_dynamic_cast(obj, TYPE_HPPA64_CPU);
+}
+
+static void hppa_cpu_reset_hold(Object *obj, ResetType type)
+{
+    HPPACPUClass *scc = HPPA_CPU_GET_CLASS(obj);
     CPUState *cs = CPU(obj);
     HPPACPU *cpu = HPPA_CPU(obj);
     CPUHPPAState *env = &cpu->env;
 
+    if (scc->parent_phases.hold) {
+        scc->parent_phases.hold(obj, type);
+    }
     cs->exception_index = -1;
+    cs->halted = 0;
+    cpu_set_pc(cs, 0xf0000004);
+
+    memset(env, 0, offsetof(CPUHPPAState, end_reset_fields));
+
     cpu_hppa_loaded_fr0(env);
-    cpu_hppa_put_psw(env, PSW_W);
+
+    /* 64-bit machines start with space-register hashing enabled in %dr2 */
+    env->dr[2] = hppa_is_pa20(env) ? HPPA64_DIAG_SPHASH_ENABLE : 0;
+
+    cpu_hppa_put_psw(env, PSW_M);
 }
 
 static ObjectClass *hppa_cpu_class_by_name(const char *cpu_model)
@@ -183,12 +249,14 @@ static const struct SysemuCPUOps hppa_sysemu_ops = {
 
 static const TCGCPUOps hppa_tcg_ops = {
     .initialize = hppa_translate_init,
+    .translate_code = hppa_translate_code,
     .synchronize_from_tb = hppa_cpu_synchronize_from_tb,
     .restore_state_to_opc = hppa_restore_state_to_opc,
 
 #ifndef CONFIG_USER_ONLY
-    .tlb_fill = hppa_cpu_tlb_fill,
+    .tlb_fill_align = hppa_cpu_tlb_fill_align,
     .cpu_exec_interrupt = hppa_cpu_exec_interrupt,
+    .cpu_exec_halt = hppa_cpu_has_work,
     .do_interrupt = hppa_cpu_do_interrupt,
     .do_unaligned_access = hppa_cpu_do_unaligned_access,
     .do_transaction_failed = hppa_cpu_do_transaction_failed,
@@ -200,9 +268,13 @@ static void hppa_cpu_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     CPUClass *cc = CPU_CLASS(oc);
     HPPACPUClass *acc = HPPA_CPU_CLASS(oc);
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
 
     device_class_set_parent_realize(dc, hppa_cpu_realizefn,
                                     &acc->parent_realize);
+
+    resettable_class_set_parent_phases(rc, NULL, hppa_cpu_reset_hold, NULL,
+                                       &acc->parent_phases);
 
     cc->class_by_name = hppa_cpu_class_by_name;
     cc->has_work = hppa_cpu_has_work;

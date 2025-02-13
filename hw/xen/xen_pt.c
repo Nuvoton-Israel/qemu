@@ -59,7 +59,8 @@
 #include "hw/pci/pci.h"
 #include "hw/qdev-properties.h"
 #include "hw/qdev-properties-system.h"
-#include "xen_pt.h"
+#include "hw/xen/xen_pt.h"
+#include "hw/xen/xen_igd.h"
 #include "hw/xen/xen.h"
 #include "hw/xen/xen-legacy-backend.h"
 #include "qemu/range.h"
@@ -710,7 +711,7 @@ static void xen_pt_destroy(PCIDevice *d) {
     uint8_t intx;
     int rc;
 
-    if (machine_irq && !xen_host_pci_device_closed(&s->real_device)) {
+    if (machine_irq && !xen_host_pci_device_closed(host_dev)) {
         intx = xen_pt_pci_intx(s);
         rc = xc_domain_unbind_pt_irq(xen_xc, xen_domid, machine_irq,
                                      PT_IRQ_TYPE_PCI,
@@ -759,8 +760,8 @@ static void xen_pt_destroy(PCIDevice *d) {
         memory_listener_unregister(&s->io_listener);
         s->listener_set = false;
     }
-    if (!xen_host_pci_device_closed(&s->real_device)) {
-        xen_host_pci_device_put(&s->real_device);
+    if (!xen_host_pci_device_closed(host_dev)) {
+        xen_host_pci_device_put(host_dev);
     }
 }
 /* init */
@@ -930,10 +931,9 @@ static void xen_pt_unregister_device(PCIDevice *d)
     xen_pt_destroy(d);
 }
 
-static Property xen_pci_passthrough_properties[] = {
+static const Property xen_pci_passthrough_properties[] = {
     DEFINE_PROP_PCI_HOST_DEVADDR("hostaddr", XenPCIPassthroughState, hostaddr),
     DEFINE_PROP_BOOL("permissive", XenPCIPassthroughState, permissive, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void xen_pci_passthrough_instance_init(Object *obj)

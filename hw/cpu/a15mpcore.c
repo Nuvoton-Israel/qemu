@@ -24,7 +24,7 @@
 #include "hw/cpu/a15mpcore.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
 #include "kvm_arm.h"
 #include "target/arm/gtimer.h"
 
@@ -144,7 +144,7 @@ static void a15mp_priv_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static Property a15mp_priv_properties[] = {
+static const Property a15mp_priv_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", A15MPPrivState, num_cpu, 1),
     /* The Cortex-A15MP may have anything from 0 to 224 external interrupt
      * IRQ lines (with another 32 internal). We default to 128+32, which
@@ -153,7 +153,6 @@ static Property a15mp_priv_properties[] = {
      * Other boards may differ and should set this property appropriately.
      */
     DEFINE_PROP_UINT32("num-irq", A15MPPrivState, num_irq, 160),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void a15mp_priv_class_init(ObjectClass *klass, void *data)
@@ -165,17 +164,14 @@ static void a15mp_priv_class_init(ObjectClass *klass, void *data)
     /* We currently have no saveable state */
 }
 
-static const TypeInfo a15mp_priv_info = {
-    .name  = TYPE_A15MPCORE_PRIV,
-    .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size  = sizeof(A15MPPrivState),
-    .instance_init = a15mp_priv_initfn,
-    .class_init = a15mp_priv_class_init,
+static const TypeInfo a15mp_types[] = {
+    {
+        .name           = TYPE_A15MPCORE_PRIV,
+        .parent         = TYPE_SYS_BUS_DEVICE,
+        .instance_size  = sizeof(A15MPPrivState),
+        .instance_init  = a15mp_priv_initfn,
+        .class_init     = a15mp_priv_class_init,
+    },
 };
 
-static void a15mp_register_types(void)
-{
-    type_register_static(&a15mp_priv_info);
-}
-
-type_init(a15mp_register_types)
+DEFINE_TYPES(a15mp_types)

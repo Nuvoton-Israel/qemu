@@ -10,9 +10,20 @@
  * See the COPYING file in the top-level directory for details.
  */
 
-#include "../tcg-ldst.c.inc"
-#include "../tcg-pool.c.inc"
 #include "qemu/bitops.h"
+
+/* Used for function call generation. */
+#define TCG_REG_CALL_STACK              TCG_REG_SP
+#define TCG_TARGET_STACK_ALIGN          16
+#define TCG_TARGET_CALL_STACK_OFFSET    0
+#define TCG_TARGET_CALL_ARG_I32         TCG_CALL_ARG_NORMAL
+#define TCG_TARGET_CALL_ARG_I64         TCG_CALL_ARG_NORMAL
+#ifdef CONFIG_DARWIN
+# define TCG_TARGET_CALL_ARG_I128       TCG_CALL_ARG_NORMAL
+#else
+# define TCG_TARGET_CALL_ARG_I128       TCG_CALL_ARG_EVEN
+#endif
+#define TCG_TARGET_CALL_RET_I128        TCG_CALL_RET_NORMAL
 
 /* We're going to re-use TCGType in setting of the SF bit, which controls
    the size of the operation performed.  If we know the values match, it
@@ -1388,8 +1399,7 @@ static void tcg_out_cmp(TCGContext *s, TCGType ext, TCGCond cond, TCGReg a,
         if (!const_b) {
             tcg_out_insn(s, 3510, ANDS, ext, TCG_REG_XZR, a, b);
         } else {
-            tcg_debug_assert(is_limm(b));
-            tcg_out_logicali(s, I3404_ANDSI, 0, TCG_REG_XZR, a, b);
+            tcg_out_logicali(s, I3404_ANDSI, ext, TCG_REG_XZR, a, b);
         }
     } else {
         if (!const_b) {
@@ -1465,6 +1475,7 @@ static void tcg_out_brcond(TCGContext *s, TCGType ext, TCGCond c, TCGArg a,
     case TCG_COND_TSTNE:
         /* tst xN,0xffffffff; b.ne L -> cbnz wN,L */
         if (b_const && b == UINT32_MAX) {
+            c = tcg_tst_eqne_cond(c);
             ext = TCG_TYPE_I32;
             need_cmp = false;
             break;
@@ -2104,14 +2115,10 @@ void tb_target_set_jmp_target(const TranslationBlock *tb, int n,
     flush_idcache_range(jmp_rx, jmp_rw, 4);
 }
 
-static void tcg_out_op(TCGContext *s, TCGOpcode opc,
+static void tcg_out_op(TCGContext *s, TCGOpcode opc, TCGType ext,
                        const TCGArg args[TCG_MAX_OP_ARGS],
                        const int const_args[TCG_MAX_OP_ARGS])
 {
-    /* 99% of the time, we can signal the use of extension registers
-       by looking to see if the opcode handles 64-bit data.  */
-    TCGType ext = (tcg_op_defs[opc].flags & TCG_OPF_64BIT) != 0;
-
     /* Hoist the loads of the most common arguments.  */
     TCGArg a0 = args[0];
     TCGArg a1 = args[1];
@@ -2443,7 +2450,12 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
 
     case INDEX_op_extract_i64:
     case INDEX_op_extract_i32:
-        tcg_out_ubfm(s, ext, a0, a1, a2, a2 + args[3] - 1);
+        if (a2 == 0) {
+            uint64_t mask = MAKE_64BIT_MASK(0, args[3]);
+            tcg_out_logicali(s, I3404_ANDI, ext, a0, a1, mask);
+        } else {
+            tcg_out_ubfm(s, ext, a0, a1, a2, a2 + args[3] - 1);
+        }
         break;
 
     case INDEX_op_sextract_i64:
@@ -2737,7 +2749,8 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
             TCGCond cond = args[3];
             AArch64Insn insn;
 
-            if (cond == TCG_COND_NE) {
+            switch (cond) {
+            case TCG_COND_NE:
                 if (const_args[2]) {
                     if (is_scalar) {
                         tcg_out_insn(s, 3611, CMTST, vece, a0, a1, a1);
@@ -2752,7 +2765,27 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
                     }
                     tcg_out_insn(s, 3617, NOT, is_q, 0, a0, a0);
                 }
-            } else {
+                break;
+
+            case TCG_COND_TSTNE:
+            case TCG_COND_TSTEQ:
+                if (const_args[2]) {
+                    /* (x & 0) == 0 */
+                    tcg_out_dupi_vec(s, type, MO_8, a0,
+                                     -(cond == TCG_COND_TSTEQ));
+                    break;
+                }
+                if (is_scalar) {
+                    tcg_out_insn(s, 3611, CMTST, vece, a0, a1, a2);
+                } else {
+                    tcg_out_insn(s, 3616, CMTST, is_q, vece, a0, a1, a2);
+                }
+                if (cond == TCG_COND_TSTEQ) {
+                    tcg_out_insn(s, 3617, NOT, is_q, 0, a0, a0);
+                }
+                break;
+
+            default:
                 if (const_args[2]) {
                     if (is_scalar) {
                         insn = cmp0_scalar_insn[cond];
@@ -2791,6 +2824,7 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
                     }
                     tcg_out_insn_3616(s, insn, is_q, vece, a0, a1, a2);
                 }
+                break;
             }
         }
         break;
@@ -2929,7 +2963,8 @@ void tcg_expand_vec_op(TCGOpcode opc, TCGType type, unsigned vece,
     }
 }
 
-static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
+static TCGConstraintSetIndex
+tcg_target_op_def(TCGOpcode op, TCGType type, unsigned flags)
 {
     switch (op) {
     case INDEX_op_goto_ptr:
@@ -3125,7 +3160,7 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
         return C_O1_I2(w, 0, w);
 
     default:
-        g_assert_not_reached();
+        return C_NotImplemented;
     }
 }
 

@@ -22,8 +22,8 @@
 #include "qemu/error-report.h"
 #include "qemu/iov.h"
 #include "qemu/module.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/dma.h"
+#include "system/block-backend.h"
+#include "system/dma.h"
 #include "hw/qdev-properties.h"
 #include "hw/scsi/scsi.h"
 #include "scsi/constants.h"
@@ -357,7 +357,6 @@ static void virtio_scsi_do_one_tmf_bh(VirtIOSCSIReq *req)
 
     default:
         g_assert_not_reached();
-        break;
     }
 
 out:
@@ -1066,9 +1065,6 @@ static void virtio_scsi_hotplug(HotplugHandler *hotplug_dev, DeviceState *dev,
     int ret;
 
     if (s->ctx && !s->dataplane_fenced) {
-        if (blk_op_is_blocked(sd->conf.blk, BLOCK_OP_TYPE_DATAPLANE, errp)) {
-            return;
-        }
         ret = blk_set_aio_context(sd->conf.blk, s->ctx, errp);
         if (ret < 0) {
             return;
@@ -1286,7 +1282,7 @@ static void virtio_scsi_device_unrealize(DeviceState *dev)
     qemu_mutex_destroy(&s->tmf_bh_lock);
 }
 
-static Property virtio_scsi_properties[] = {
+static const Property virtio_scsi_properties[] = {
     DEFINE_PROP_UINT32("num_queues", VirtIOSCSI, parent_obj.conf.num_queues,
                        VIRTIO_SCSI_AUTO_NUM_QUEUES),
     DEFINE_PROP_UINT32("virtqueue_size", VirtIOSCSI,
@@ -1303,7 +1299,6 @@ static Property virtio_scsi_properties[] = {
                                                 VIRTIO_SCSI_F_CHANGE, true),
     DEFINE_PROP_LINK("iothread", VirtIOSCSI, parent_obj.conf.iothread,
                      TYPE_IOTHREAD, IOThread *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_virtio_scsi = {

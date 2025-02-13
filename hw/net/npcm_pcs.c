@@ -345,9 +345,9 @@ static void npcm_pcs_write(void *opaque, hwaddr offset,
     }
 }
 
-static void npcm_pcs_reset(DeviceState *dev)
+static void npcm_pcs_enter_reset(Object *obj, ResetType type)
 {
-    NPCMPCSState *s = NPCM_PCS(dev);
+    NPCMPCSState *s = NPCM_PCS(obj);
 
     npcm_pcs_soft_reset(s);
 }
@@ -389,13 +389,14 @@ static const VMStateDescription vmstate_npcm_pcs = {
 
 static void npcm_pcs_class_init(ObjectClass *klass, void *data)
 {
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "NPCM PCS Controller";
     dc->realize = npcm_pcs_realize;
-    dc->reset = npcm_pcs_reset;
     dc->vmsd = &vmstate_npcm_pcs;
+    rc->phases.enter = npcm_pcs_enter_reset;
 }
 
 static const TypeInfo npcm_pcs_types[] = {

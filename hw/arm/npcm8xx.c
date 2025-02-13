@@ -18,7 +18,7 @@
 
 #include "hw/arm/boot.h"
 #include "hw/arm/npcm8xx.h"
-#include "hw/char/serial.h"
+#include "hw/char/serial-mm.h"
 #include "hw/intc/arm_gic.h"
 #include "hw/loader.h"
 #include "hw/misc/unimp.h"
@@ -26,7 +26,7 @@
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qemu/units.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 #define ARM_PHYS_TIMER_PPI  30
 #define ARM_VIRT_TIMER_PPI  27
@@ -810,10 +810,9 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.vect",         0xffff0000,   256);
 }
 
-static Property npcm8xx_properties[] = {
+static const Property npcm8xx_properties[] = {
     DEFINE_PROP_LINK("dram-mr", NPCM8xxState, dram, TYPE_MEMORY_REGION,
                      MemoryRegion *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void npcm8xx_class_init(ObjectClass *oc, void *data)

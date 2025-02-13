@@ -22,6 +22,7 @@
 #include "qemu/qemu-print.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
+#include "exec/translation-block.h"
 #include "fpu/softfloat-helpers.h"
 #include "tcg/tcg.h"
 
@@ -45,7 +46,7 @@ static void openrisc_cpu_synchronize_from_tb(CPUState *cs,
 {
     OpenRISCCPU *cpu = OPENRISC_CPU(cs);
 
-    tcg_debug_assert(!(cs->tcg_cflags & CF_PCREL));
+    tcg_debug_assert(!tcg_cflags_has(cs, CF_PCREL));
     cpu->env.pc = tb->pc;
 }
 
@@ -85,14 +86,14 @@ static void openrisc_disas_set_info(CPUState *cpu, disassemble_info *info)
     info->print_insn = print_insn_or1k;
 }
 
-static void openrisc_cpu_reset_hold(Object *obj)
+static void openrisc_cpu_reset_hold(Object *obj, ResetType type)
 {
-    CPUState *s = CPU(obj);
-    OpenRISCCPU *cpu = OPENRISC_CPU(s);
-    OpenRISCCPUClass *occ = OPENRISC_CPU_GET_CLASS(cpu);
+    CPUState *cs = CPU(obj);
+    OpenRISCCPU *cpu = OPENRISC_CPU(cs);
+    OpenRISCCPUClass *occ = OPENRISC_CPU_GET_CLASS(obj);
 
     if (occ->parent_phases.hold) {
-        occ->parent_phases.hold(obj);
+        occ->parent_phases.hold(obj, type);
     }
 
     memset(&cpu->env, 0, offsetof(CPUOpenRISCState, end_reset_fields));
@@ -100,11 +101,19 @@ static void openrisc_cpu_reset_hold(Object *obj)
     cpu->env.pc = 0x100;
     cpu->env.sr = SR_FO | SR_SM;
     cpu->env.lock_addr = -1;
-    s->exception_index = -1;
+    cs->exception_index = -1;
     cpu_set_fpcsr(&cpu->env, 0);
 
     set_float_detect_tininess(float_tininess_before_rounding,
                               &cpu->env.fp_status);
+    /*
+     * TODO: this is probably not the correct NaN propagation rule for
+     * this architecture.
+     */
+    set_float_2nan_prop_rule(float_2nan_prop_x87, &cpu->env.fp_status);
+
+    /* Default NaN: sign bit clear, frac msb set */
+    set_float_default_nan_pattern(0b01000000, &cpu->env.fp_status);
 
 #ifndef CONFIG_USER_ONLY
     cpu->env.picmr = 0x00000000;
@@ -227,12 +236,14 @@ static const struct SysemuCPUOps openrisc_sysemu_ops = {
 
 static const TCGCPUOps openrisc_tcg_ops = {
     .initialize = openrisc_translate_init,
+    .translate_code = openrisc_translate_code,
     .synchronize_from_tb = openrisc_cpu_synchronize_from_tb,
     .restore_state_to_opc = openrisc_restore_state_to_opc,
 
 #ifndef CONFIG_USER_ONLY
     .tlb_fill = openrisc_cpu_tlb_fill,
     .cpu_exec_interrupt = openrisc_cpu_exec_interrupt,
+    .cpu_exec_halt = openrisc_cpu_has_work,
     .do_interrupt = openrisc_cpu_do_interrupt,
 #endif /* !CONFIG_USER_ONLY */
 };

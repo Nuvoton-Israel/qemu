@@ -18,6 +18,7 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "qemu/config-file.h"
+#include "qemu/help_option.h"
 #include "qapi/error.h"
 #include "qemu/lockable.h"
 #include "qemu/option.h"
@@ -98,7 +99,12 @@ static int plugin_add(void *opaque, const char *name, const char *value,
     bool is_on;
     char *fullarg;
 
-    if (strcmp(name, "file") == 0) {
+    if (is_help_option(value)) {
+        printf("Plugin options\n");
+        printf("  file=<path/to/plugin.so>\n");
+        printf("  plugin specific arguments\n");
+        exit(0);
+    } else if (strcmp(name, "file") == 0) {
         if (strcmp(value, "") == 0) {
             error_setg(errp, "requires a non-empty argument");
             return 1;
@@ -390,7 +396,7 @@ void plugin_reset_uninstall(qemu_plugin_id_t id,
                             bool reset)
 {
     struct qemu_plugin_reset_data *data;
-    struct qemu_plugin_ctx *ctx;
+    struct qemu_plugin_ctx *ctx = NULL;
 
     WITH_QEMU_LOCK_GUARD(&plugin.lock) {
         ctx = plugin_id_to_ctx_locked(id);

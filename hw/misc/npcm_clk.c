@@ -26,7 +26,7 @@
 #include "qemu/timer.h"
 #include "qemu/units.h"
 #include "trace.h"
-#include "sysemu/watchdog.h"
+#include "system/watchdog.h"
 
 /*
  * The reference clock hz, and the SECCNT and CNTR25M registers in this module,
@@ -966,20 +966,14 @@ static void npcm_clk_enter_reset(Object *obj, ResetType type)
     NPCMCLKState *s = NPCM_CLK(obj);
     NPCMCLKClass *c = NPCM_CLK_GET_CLASS(s);
 
-    switch (type) {
-    case RESET_TYPE_COLD:
-        memcpy(s->regs, c->cold_reset_values, c->nr_regs * sizeof(uint32_t));
-        s->ref_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        npcm7xx_clk_update_all_clocks(s);
-        return;
-    }
-
+    g_assert(sizeof(s->regs) >= c->nr_regs * sizeof(uint32_t));
+    memcpy(s->regs, c->cold_reset_values, sizeof(s->regs));
+    s->ref_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    npcm7xx_clk_update_all_clocks(s);
     /*
      * A small number of registers need to be reset on a core domain reset,
      * but no such reset type exists yet.
      */
-    qemu_log_mask(LOG_UNIMP, "%s: reset type %d not implemented.",
-                  __func__, type);
 }
 
 static void npcm7xx_clk_init_clock_hierarchy(NPCMCLKState *s)

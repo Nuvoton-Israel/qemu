@@ -23,8 +23,8 @@
 #include "qemu/memalign.h"
 #include "trace.h"
 #include "qed.h"
-#include "sysemu/block-backend.h"
-#include "qapi/qmp/qdict.h"
+#include "system/block-backend.h"
+#include "qobject/qdict.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qapi-visit-block-core.h"
 
@@ -1579,6 +1579,7 @@ bdrv_qed_co_change_backing_file(BlockDriverState *bs, const char *backing_file,
 static void coroutine_fn GRAPH_RDLOCK
 bdrv_qed_co_invalidate_cache(BlockDriverState *bs, Error **errp)
 {
+    ERRP_GUARD();
     BDRVQEDState *s = bs->opaque;
     int ret;
 

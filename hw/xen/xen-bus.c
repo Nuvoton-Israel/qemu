@@ -13,12 +13,13 @@
 #include "hw/sysbus.h"
 #include "hw/xen/xen.h"
 #include "hw/xen/xen-backend.h"
+#include "hw/xen/xen-legacy-backend.h" /* xen_be_init() */
 #include "hw/xen/xen-bus.h"
 #include "hw/xen/xen-bus-helper.h"
 #include "monitor/monitor.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
-#include "sysemu/sysemu.h"
+#include "qobject/qdict.h"
+#include "system/system.h"
 #include "net/net.h"
 #include "trace.h"
 
@@ -155,8 +156,8 @@ again:
             !strcmp(key[i], "hotplug-status"))
             continue;
 
-        if (xs_node_scanf(xenbus->xsh, tid, path, key[i], NULL, "%ms",
-                          &val) == 1) {
+        val = xs_node_read(xenbus->xsh, tid, NULL, NULL, "%s/%s", path, key[i]);
+        if (val) {
             qdict_put_str(opts, key[i], val);
             free(val);
         }
@@ -328,6 +329,9 @@ static void xen_bus_realize(BusState *bus, Error **errp)
         error_setg_errno(errp, errno, "failed xs_open");
         goto fail;
     }
+
+    /* Initialize legacy backend core & drivers */
+    xen_be_init();
 
     if (xs_node_scanf(xenbus->xsh, XBT_NULL, "", /* domain root node */
                       "domid", NULL, "%u", &domid) == 1) {
@@ -644,6 +648,16 @@ int xen_device_frontend_scanf(XenDevice *xendev, const char *key,
     va_end(ap);
 
     return rc;
+}
+
+char *xen_device_frontend_read(XenDevice *xendev, const char *key)
+{
+    XenBus *xenbus = XEN_BUS(qdev_get_parent_bus(DEVICE(xendev)));
+
+    g_assert(xenbus->xsh);
+
+    return xs_node_read(xenbus->xsh, XBT_NULL, NULL, NULL, "%s/%s",
+                        xendev->frontend_path, key);
 }
 
 static void xen_device_frontend_set_state(XenDevice *xendev,
@@ -1088,10 +1102,9 @@ unrealize:
     xen_device_unrealize(dev);
 }
 
-static Property xen_device_props[] = {
+static const Property xen_device_props[] = {
     DEFINE_PROP_UINT16("frontend-id", XenDevice, frontend_id,
                        DOMID_INVALID),
-    DEFINE_PROP_END_OF_LIST()
 };
 
 static void xen_device_class_init(ObjectClass *class, void *data)

@@ -40,7 +40,7 @@
 #include "net/tap.h"
 #include "qemu/module.h"
 #include "qemu/range.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/hw.h"
 #include "hw/net/mii.h"
 #include "hw/pci/msi.h"
@@ -352,7 +352,6 @@ e1000e_init_net_peer(E1000EState *s, PCIDevice *pci_dev, uint8_t *macaddr)
     for (i = 0; i < s->conf.peers.queues; i++) {
         nc = qemu_get_subqueue(s->nic, i);
         qemu_set_vnet_hdr_len(nc->peer, sizeof(struct virtio_net_hdr));
-        qemu_using_vnet_hdr(nc->peer, true);
     }
 }
 
@@ -513,7 +512,7 @@ static void e1000e_pci_uninit(PCIDevice *pci_dev)
     msi_uninit(pci_dev);
 }
 
-static void e1000e_qdev_reset_hold(Object *obj)
+static void e1000e_qdev_reset_hold(Object *obj, ResetType type)
 {
     E1000EState *s = E1000E(obj);
 
@@ -662,7 +661,7 @@ static PropertyInfo e1000e_prop_disable_vnet,
                     e1000e_prop_subsys_ven,
                     e1000e_prop_subsys;
 
-static Property e1000e_properties[] = {
+static const Property e1000e_properties[] = {
     DEFINE_NIC_PROPERTIES(E1000EState, conf),
     DEFINE_PROP_SIGNED("disable_vnet_hdr", E1000EState, disable_vnet, false,
                         e1000e_prop_disable_vnet, bool),
@@ -673,7 +672,6 @@ static Property e1000e_properties[] = {
                         e1000e_prop_subsys, uint16_t),
     DEFINE_PROP_BOOL("init-vet", E1000EState, init_vet, true),
     DEFINE_PROP_BOOL("migrate-timadj", E1000EState, timadj, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void e1000e_class_init(ObjectClass *class, void *data)

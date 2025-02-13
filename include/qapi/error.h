@@ -207,7 +207,7 @@
  *
  * Without ERRP_GUARD(), use of the @errp parameter is restricted:
  * - It must not be dereferenced, because it may be null.
- * - It should not be passed to error_prepend() or
+ * - It should not be passed to error_prepend(), error_vprepend(), or
  *   error_append_hint(), because that doesn't work with &error_fatal.
  * ERRP_GUARD() lifts these restrictions.
  *
@@ -465,6 +465,18 @@ void warn_reportf_err(Error *err, const char *fmt, ...)
  */
 void error_reportf_err(Error *err, const char *fmt, ...)
     G_GNUC_PRINTF(2, 3);
+
+/*
+ * Similar to warn_report_err(), except it prints the message just once.
+ * Return true when it prints, false otherwise.
+ */
+bool warn_report_err_once_cond(bool *printed, Error *err);
+
+#define warn_report_err_once(err)                           \
+    ({                                                      \
+        static bool print_once_;                            \
+        warn_report_err_once_cond(&print_once_, err);       \
+    })
 
 /*
  * Just like error_setg(), except you get to specify the error class.

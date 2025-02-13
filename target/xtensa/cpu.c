@@ -93,17 +93,16 @@ bool xtensa_abi_call0(void)
 }
 #endif
 
-static void xtensa_cpu_reset_hold(Object *obj)
+static void xtensa_cpu_reset_hold(Object *obj, ResetType type)
 {
-    CPUState *s = CPU(obj);
-    XtensaCPU *cpu = XTENSA_CPU(s);
-    XtensaCPUClass *xcc = XTENSA_CPU_GET_CLASS(cpu);
-    CPUXtensaState *env = &cpu->env;
+    CPUState *cs = CPU(obj);
+    XtensaCPUClass *xcc = XTENSA_CPU_GET_CLASS(obj);
+    CPUXtensaState *env = cpu_env(cs);
     bool dfpu = xtensa_option_enabled(env->config,
                                       XTENSA_OPTION_DFP_COPROCESSOR);
 
     if (xcc->parent_phases.hold) {
-        xcc->parent_phases.hold(obj);
+        xcc->parent_phases.hold(obj, type);
     }
 
     env->pc = env->config->exception_vector[EXC_RESET0 + env->static_vectors];
@@ -132,10 +131,14 @@ static void xtensa_cpu_reset_hold(Object *obj)
 
 #ifndef CONFIG_USER_ONLY
     reset_mmu(env);
-    s->halted = env->runstall;
+    cs->halted = env->runstall;
 #endif
+    /* For inf * 0 + NaN, return the input NaN */
+    set_float_infzeronan_rule(float_infzeronan_dnan_never, &env->fp_status);
     set_no_signaling_nans(!dfpu, &env->fp_status);
-    set_use_first_nan(!dfpu, &env->fp_status);
+    /* Default NaN value: sign bit clear, set frac msb */
+    set_float_default_nan_pattern(0b01000000, &env->fp_status);
+    xtensa_use_first_nan(env, !dfpu);
 }
 
 static ObjectClass *xtensa_cpu_class_by_name(const char *cpu_model)
@@ -205,7 +208,7 @@ XtensaCPU *xtensa_cpu_create_with_clock(const char *cpu_type, Clock *cpu_refclk)
 {
     DeviceState *cpu;
 
-    cpu = DEVICE(object_new(cpu_type));
+    cpu = qdev_new(cpu_type);
     qdev_connect_clock_in(cpu, "clk-in", cpu_refclk);
     qdev_realize(cpu, NULL, &error_abort);
 
@@ -229,12 +232,14 @@ static const struct SysemuCPUOps xtensa_sysemu_ops = {
 
 static const TCGCPUOps xtensa_tcg_ops = {
     .initialize = xtensa_translate_init,
+    .translate_code = xtensa_translate_code,
     .debug_excp_handler = xtensa_breakpoint_handler,
     .restore_state_to_opc = xtensa_restore_state_to_opc,
 
 #ifndef CONFIG_USER_ONLY
     .tlb_fill = xtensa_cpu_tlb_fill,
     .cpu_exec_interrupt = xtensa_cpu_exec_interrupt,
+    .cpu_exec_halt = xtensa_cpu_has_work,
     .do_interrupt = xtensa_cpu_do_interrupt,
     .do_transaction_failed = xtensa_cpu_do_transaction_failed,
     .do_unaligned_access = xtensa_cpu_do_unaligned_access,

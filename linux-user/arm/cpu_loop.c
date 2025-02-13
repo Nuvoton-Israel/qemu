@@ -21,9 +21,11 @@
 #include "qemu.h"
 #include "user-internals.h"
 #include "elf.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
 #include "semihosting/common-semi.h"
+#include "exec/page-protection.h"
+#include "user/page-protection.h"
 #include "target/arm/syndrome.h"
 
 #define get_user_code_u32(x, gaddr, env)                \
@@ -263,7 +265,7 @@ static bool insn_is_linux_bkpt(uint32_t opcode, bool is_thumb)
 
 static bool emulate_arm_fpa11(CPUARMState *env, uint32_t opcode)
 {
-    TaskState *ts = env_cpu(env)->opaque;
+    TaskState *ts = get_task_state(env_cpu(env));
     int rc = EmulateAll(opcode, &ts->fpa, env);
     int raise, enabled;
 
@@ -511,10 +513,10 @@ void cpu_loop(CPUARMState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void target_cpu_copy_regs(CPUArchState *env, target_pt_regs *regs)
 {
     CPUState *cpu = env_cpu(env);
-    TaskState *ts = cpu->opaque;
+    TaskState *ts = get_task_state(cpu);
     struct image_info *info = ts->info;
     int i;
 
