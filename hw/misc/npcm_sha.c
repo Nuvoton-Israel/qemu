@@ -20,8 +20,7 @@
 #include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "trace.h"
-#include <nettle/sha1.h>
-#include <nettle/sha2.h>
+#include <nettle/sha.h>
 #include <byteswap.h>
 
 #define NPCM8XX_SHA_REG_SIZE   0x1000
@@ -52,46 +51,36 @@ enum {
 
 static void sha256_starts(NPCM8xxSHAState *s)
 {
-    struct sha256_ctx ctx;
-    sha256_init(&ctx);
-    memcpy(s->sha_hash_out, ctx.state, sizeof(ctx.state));
+    sha256_init(&s->sha256ctx);
 }
 static void sha1_starts(NPCM8xxSHAState *s)
 {
-    struct sha1_ctx ctx;
-    sha1_init(&ctx);
-    memcpy(s->sha_hash_out, ctx.state, sizeof(ctx.state));
+    sha1_init(&s->sha1ctx);
 }
 static void sha512_starts(NPCM8xxSHAState *s, bool is_sha512)
 {
-    struct sha512_ctx ctx;
     if (is_sha512)
-        sha512_init(&ctx);
+        sha512_init(&s->sha512ctx);
     else
-        sha384_init(&ctx);
-    memcpy(s->sha512_state, ctx.state, sizeof(ctx.state));
+        sha384_init(&s->sha512ctx);
 }
 static void npcm8xx_sha_write_data(NPCM8xxSHAState *s, uint32_t data)
 {
-    uint32_t *buf = (uint32_t *)s->buffer;
     if ((s->sha_ctr_sts & NPCM8XX_SHA_DIN_SWAP) == 0)
         data = bswap_32(data);
-    buf[s->write_bytes++] = data;
-    if (s->write_bytes == 16) {
-        s->sha_ctr_sts |= NPCM8XX_SHA_BUSY;
-        if (s->sha_cfg & NPCM8XX_SHA_SHA1)
-            sha1_compress(s->sha_hash_out, s->buffer);
-        else
-            sha256_compress(s->sha_hash_out, s->buffer);
-        s->write_bytes = 0;
-        s->sha_ctr_sts &= ~NPCM8XX_SHA_BUSY;
-    }
+    uint8_t *buf = (uint8_t*)(&data);
+    s->sha_ctr_sts |= NPCM8XX_SHA_BUSY;
+    if (s->sha_cfg & NPCM8XX_SHA_SHA1)
+        sha1_update(&s->sha1ctx, 4, buf);
+    else
+        sha256_update(&s->sha256ctx, 4, buf);
+    s->sha_ctr_sts &= ~NPCM8XX_SHA_BUSY;
 }
 static void npcm8xx_sha512_write_data(NPCM8xxSHAState *s, uint32_t data)
 {
     if (s->sha512_cmd & NPCM8XX_SHA_CMD_LOAD)
     {
-        uint32_t *state = (uint32_t *)s->sha512_state;
+        uint32_t *state = (uint32_t *)s->sha512ctx.state;
         if (s->sha512_bytes_index % 2 == 0)
             state[s->sha512_bytes_index+1] = data;
         else
@@ -103,16 +92,15 @@ static void npcm8xx_sha512_write_data(NPCM8xxSHAState *s, uint32_t data)
         }
         return;
     }
-    uint32_t *buf = (uint32_t *)s->sha512_buffer;
     if ((s->sha512_ctr_sts & NPCM8XX_SHA_DIN_SWAP) == 0)
         data = bswap_32(data);
-    buf[s->sha512_bytes_index++] = data;
+    uint8_t *buf = (uint8_t*)(&data);
+    s->sha512_ctr_sts |= NPCM8XX_SHA_BUSY;
+    // sha384 and sha512 use the same compress function
+    sha512_update(&s->sha512ctx, 4, buf);
+    s->sha512_ctr_sts &= ~NPCM8XX_SHA_BUSY;
     if (s->sha512_bytes_index == 32) {
-        s->sha512_ctr_sts |= NPCM8XX_SHA_BUSY;
-        // sha384 and sha512 use the same compress function
-        sha512_compress(s->sha512_state, s->sha512_buffer);
         s->sha512_bytes_index = 0;
-        s->sha512_ctr_sts &= ~NPCM8XX_SHA_BUSY;
     }
 }
 // we should allow sha384 read all state for load it later
@@ -122,11 +110,11 @@ static uint32_t npcm8xx_sha512_read_data(NPCM8xxSHAState *s)
     if (s->sha512_bytes_index % 2 == 0)
     {
         // return high 32 bits
-        value = s->sha512_state[s->sha512_bytes_index / 2] >> 32;
+        value = s->sha512ctx.state[s->sha512_bytes_index / 2] >> 32;
     }
     else
     {
-        value = s->sha512_state[s->sha512_bytes_index / 2] & 0xffffffff;
+        value = s->sha512ctx.state[s->sha512_bytes_index / 2] & 0xffffffff;
     }
     if (s->sha512_ctr_sts & NPCM8XX_SHA_EN)
         s->sha512_bytes_index++;
@@ -154,8 +142,7 @@ static void npcm8xx_sha512_handle_cmd(NPCM8xxSHAState *s, uint8_t cmd)
 static void npcm8xx_sha512_reset(NPCM8xxSHAState *s)
 {
     s->sha512_bytes_index = 0;
-    memset(s->sha512_buffer, 0, sizeof(s->sha512_buffer));
-    memset(s->sha512_state, 0, sizeof(s->sha512_state));
+    memset(&s->sha512ctx, 0, sizeof(struct sha512_ctx));
 }
 
 static void npcm8xx_sha_write(void *opaque, hwaddr offset, uint64_t value, unsigned size)
@@ -173,7 +160,9 @@ static void npcm8xx_sha_write(void *opaque, hwaddr offset, uint64_t value, unsig
         if (s->sha_ctr_sts & NPCM8XX_SHA_EN &&
                 (s->sha_ctr_sts & NPCM8XX_SHA_BUSY) == 0) {
             i = (offset - NPCM_SHA_HASH_OUT_REG) / 4;
-            s->sha_hash_out[i] = value;
+            s->sha256ctx.state[i] = value;
+            if (i < _SHA1_DIGEST_LENGTH)
+                s->sha1ctx.state[i] = value;
         }
         break;
     case NPCM_SHA_CTR_STS_REG:
@@ -246,7 +235,12 @@ static uint64_t npcm8xx_sha_read(void *opaque, hwaddr offset, unsigned size)
         break;
     case NPCM_SHA_HASH_OUT_REG ... NPCM_SHA_HASH_OUT_LAST_REG:
         uint8_t i = (offset - NPCM_SHA_HASH_OUT_REG) / 4;
-        value = (s->sha_hash_out[i]);
+        if (s->sha_cfg & NPCM8XX_SHA_SHA1) {
+            if (i < _SHA1_DIGEST_LENGTH)
+                value = s->sha1ctx.state[i];
+        } else {
+            value = s->sha256ctx.state[i];
+        }
         if ((s->sha_ctr_sts & NPCM8XX_SHA_DOUT_SWAP) == 0)
             value = bswap_32(value);
         break;
@@ -303,7 +297,8 @@ static void npcm8xx_sha_reset(Object *obj, ResetType type)
     s->sha_ctr_sts = 0x80;
     s->sha512_ctr_sts = 0x80;
     s->sha512_cmd = 0;
-    memset(s->sha_hash_out, 0, sizeof(s->sha_hash_out));
+    memset(&s->sha1ctx, 0, sizeof(struct sha1_ctx));
+    memset(&s->sha256ctx, 0, sizeof(struct sha256_ctx));
     npcm8xx_sha512_reset(s);
 }
 
@@ -316,10 +311,7 @@ static const VMStateDescription vmstate_npcm8xx_sha = {
         VMSTATE_UINT8(sha_cfg, NPCM8xxSHAState),
         VMSTATE_UINT8(sha512_ctr_sts, NPCM8xxSHAState),
         VMSTATE_UINT8(sha512_cmd, NPCM8xxSHAState),
-        VMSTATE_UINT32(sha512_hash_out, NPCM8xxSHAState),
-        VMSTATE_UINT32_ARRAY(sha_hash_out, NPCM8xxSHAState, 8),
-        VMSTATE_UINT32(write_bytes, NPCM8xxSHAState),
-        VMSTATE_UINT8_ARRAY(buffer, NPCM8xxSHAState, 64),
+        VMSTATE_UINT32(sha512_bytes_index, NPCM8xxSHAState),
         VMSTATE_END_OF_LIST(),
     }
 };
