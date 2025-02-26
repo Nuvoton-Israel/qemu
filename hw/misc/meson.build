@@ -76,6 +76,11 @@ system_ss.add(when: 'CONFIG_NPCM7XX', if_true: files(
   'npcm7xx_mft.c',
   'npcm7xx_pwm.c',
   'npcm7xx_rng.c',
+))
+if config_all_devices.has_key('CONFIG_NPCM8XX') and not get_option('nettle').enabled()
+  error('We need package nettle for support NPCM8XX SHA')
+endif
+system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
   'npcm_sha.c',
 ))
 system_ss.add(when: 'CONFIG_OMAP', if_true: files(
