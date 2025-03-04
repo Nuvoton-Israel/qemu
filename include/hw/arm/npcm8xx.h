@@ -26,6 +26,7 @@
 #include "hw/mem/npcm7xx_mc.h"
 #include "hw/misc/npcm_clk.h"
 #include "hw/misc/npcm_gcr.h"
+#include "hw/misc/npcm8xx_tipctl.h"
 #include "hw/misc/npcm7xx_mft.h"
 #include "hw/misc/npcm7xx_pwm.h"
 #include "hw/misc/npcm7xx_rng.h"
@@ -40,7 +41,7 @@
 #include "target/arm/cpu.h"
 #include "hw/ssi/npcm8xx_pspi.h"
 
-#define NPCM8XX_MAX_NUM_CPUS    (4)
+#define NPCM8XX_MAX_NUM_CPUS    (1)
 
 /* The first half of the address space is reserved for DDR4 DRAM. */
 #define NPCM8XX_DRAM_BA         (0x00000000)
@@ -104,6 +105,7 @@ typedef struct NPCM8xxState {
     NPCM7xxSDHCIState   mmc;
     NPCM8xxSHAState     sha;
     NPCM8XXPSPIState    pspi;
+    NPCM8xxTIPCTLState     tipctl;
 } NPCM8xxState;
 
 typedef struct NPCM8xxClass {
