@@ -26,6 +26,7 @@
 #include "hw/mem/npcm7xx_mc.h"
 #include "hw/misc/npcm_clk.h"
 #include "hw/misc/npcm_gcr.h"
+#include "hw/misc/npcm8xx_tipctl.h"
 #include "hw/misc/npcm7xx_mft.h"
 #include "hw/misc/npcm7xx_pwm.h"
 #include "hw/misc/npcm7xx_rng.h"
@@ -104,6 +105,7 @@ typedef struct NPCM8xxState {
     NPCM7xxSDHCIState   mmc;
     NPCM8xxSHAState     sha;
     NPCM8XXPSPIState    pspi;
+    NPCM8xxTIPCTLState     tipctl;
 } NPCM8xxState;
 
 typedef struct NPCM8xxClass {
