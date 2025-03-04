@@ -45,11 +45,15 @@
 #define NPCM8XX_GICC_BA         0xdfffa000
 
 /* Core system modules. */
+
 #define NPCM8XX_CPUP_BA         0xf03fe000
 #define NPCM8XX_GCR_BA          0xf0800000
 #define NPCM8XX_CLK_BA          0xf0801000
 #define NPCM8XX_MC_BA           0xf0824000
 #define NPCM8XX_RNG_BA          0xf000b000
+#define NPCM8XX_TIPCTL_BA       0xf080d000
+
+
 
 /* ADC Module */
 #define NPCM8XX_ADC_BA          0xf000c000
@@ -424,6 +428,7 @@ static void npcm8xx_init(Object *obj)
     object_initialize_child(obj, "mc", &s->mc, TYPE_NPCM8XX_MC);
     object_initialize_child(obj, "rng", &s->rng, TYPE_NPCM7XX_RNG);
     object_initialize_child(obj, "adc", &s->adc, TYPE_NPCM7XX_ADC);
+    object_initialize_child(obj, "tipctl", &s->tipctl, TYPE_NPCM8XX_TIPCTL);
 
     for (i = 0; i < ARRAY_SIZE(s->tim); i++) {
         object_initialize_child(obj, "tim[*]", &s->tim[i], TYPE_NPCM7XX_TIMER);
@@ -484,10 +489,6 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
 
     /* CPUs */
     for (i = 0; i < nc->num_cpus; i++) {
-
-
-
-
         ARMCPU *cpu = &s->cpu[i];
         cpu->gt_cntfrq_hz = 0xbebc200;
         object_property_set_int(OBJECT(&s->cpu[i]), "mp-affinity",
@@ -498,14 +499,10 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
         object_property_set_int(OBJECT(&s->cpu[i]), "core-count",
                                 nc->num_cpus, &error_abort);
 
+        qdev_prop_set_bit(DEVICE(&s->cpu[i]), "start-powered-off",
+                   i > 0);
 
-
-
-
-
-
-
-
+        /* Disable security extensions. */
         object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", true,
                                  &error_abort);
 
@@ -575,6 +572,11 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     /* Fake Memory Controller (MC). Cannot fail. */
     sysbus_realize(SYS_BUS_DEVICE(&s->mc), &error_abort);
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->mc), 0, NPCM8XX_MC_BA);
+
+
+    /* TIPCTL Cannot fail. */
+    sysbus_realize(SYS_BUS_DEVICE(&s->tipctl), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->tipctl), 0, NPCM8XX_TIPCTL_BA);
 
     /* ADC Modules. Cannot fail. */
     qdev_connect_clock_in(DEVICE(&s->adc), "clock", qdev_get_clock_out(

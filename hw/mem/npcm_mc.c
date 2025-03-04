@@ -23,10 +23,7 @@
 #include "qemu/units.h"
 
 #define NPCM7XX_MC_REGS_SIZE (4 * KiB)
-
-
 #define NPCM8XX_MC_REGS_SIZE (8 * KiB)
-
 
 static uint64_t npcm7xx_mc_read(void *opaque, hwaddr addr, unsigned int size)
 {
