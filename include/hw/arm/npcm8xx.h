@@ -25,6 +25,7 @@
 #include "hw/mem/npcm_mc.h"
 #include "hw/misc/npcm_clk.h"
 #include "hw/misc/npcm_gcr.h"
+#include "hw/misc/npcm8xx_tipctl.h"
 #include "hw/misc/npcm7xx_mft.h"
 #include "hw/misc/npcm7xx_pwm.h"
 #include "hw/misc/npcm7xx_rng.h"
@@ -103,7 +104,9 @@ struct NPCM8xxState {
     NPCMGMACState       gmac[4];
     NPCMPCSState        pcs;
     NPCM7xxSDHCIState   mmc;
-    NPCMPSPIState       pspi;
+    NPCMPSPIState    pspi;
+    NPCM8xxTIPCTLState     tipctl;
+
 };
 
 struct NPCM8xxClass {
