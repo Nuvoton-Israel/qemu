@@ -77,6 +77,11 @@ system_ss.add(when: 'CONFIG_NPCM7XX', if_true: files(
   'npcm7xx_pwm.c',
   'npcm7xx_rng.c',
 ))
+
+system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
+  'npcm8xx_tipctl.c',
+))
+
 system_ss.add(when: 'CONFIG_OMAP', if_true: files(
   'omap_clk.c',
 ))

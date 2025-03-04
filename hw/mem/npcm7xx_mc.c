@@ -22,7 +22,7 @@
 #include "qemu/module.h"
 #include "qemu/units.h"
 
-#define NPCM7XX_MC_REGS_SIZE (4 * KiB)
+#define NPCM7XX_MC_REGS_SIZE (8 * KiB)
 
 static uint64_t npcm7xx_mc_read(void *opaque, hwaddr addr, unsigned int size)
 {
@@ -31,7 +31,7 @@ static uint64_t npcm7xx_mc_read(void *opaque, hwaddr addr, unsigned int size)
      * controller has already been initialized and will skip DDR training.
      */
     if (addr == 0) {
-        return 0x100;
+        return 0x101;
     }
 
     qemu_log_mask(LOG_UNIMP, "%s: mostly unimplemented\n", __func__);

@@ -25,6 +25,7 @@
 #include "hw/mem/npcm7xx_mc.h"
 #include "hw/misc/npcm_clk.h"
 #include "hw/misc/npcm_gcr.h"
+#include "hw/misc/npcm8xx_tipctl.h"
 #include "hw/misc/npcm7xx_mft.h"
 #include "hw/misc/npcm7xx_pwm.h"
 #include "hw/misc/npcm7xx_rng.h"
@@ -37,7 +38,7 @@
 #include "hw/usb/hcd-ohci.h"
 #include "target/arm/cpu.h"
 
-#define NPCM8XX_MAX_NUM_CPUS    (4)
+#define NPCM8XX_MAX_NUM_CPUS    (1)
 
 /* The first half of the address space is reserved for DDR4 DRAM. */
 #define NPCM8XX_DRAM_BA         (0x00000000)
@@ -99,6 +100,7 @@ struct NPCM8xxState {
     OHCISysBusState     ohci[2];
     NPCM7xxFIUState     fiu[3];
     NPCM7xxSDHCIState   mmc;
+    NPCM8xxTIPCTLState     tipctl;
 };
 
 struct NPCM8xxClass {
