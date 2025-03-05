@@ -84,6 +84,7 @@ typedef struct NPCM8xxState {
     MemoryRegion        sram;
     MemoryRegion        irom;
     MemoryRegion        ram3;
+    MemoryRegion        ram_tip;
     MemoryRegion        *dram;
 
     NPCMGCRState        gcr;

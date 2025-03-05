@@ -70,7 +70,7 @@ static void aarch64_a35_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_PMU);
     cpu->psci_conduit = QEMU_PSCI_CONDUIT_SMC;
     cpu->kvm_target = QEMU_KVM_ARM_TARGET_NONE;
-    cpu->midr = 0x410fd034;
+    cpu->midr = 0x411fd040;
     cpu->revidr = 0x00000000;
     cpu->reset_fpsid = 0x41034070;
     cpu->isar.mvfr0 = 0x10110222;

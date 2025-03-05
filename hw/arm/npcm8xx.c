@@ -67,6 +67,8 @@
 #define NPCM8XX_RAM2_SZ         (256 * KiB)
 #define NPCM8XX_ROM_BA          (0xffff0100)
 #define NPCM8XX_ROM_SZ          (64 * KiB)
+#define NPCM8XX_TIPCOM_BA       (0xf080d000)
+#define NPCM8XX_TIPCOM_SZ       (4 * KiB)
 
 /* SDHCI Modules */
 #define NPCM8XX_MMC_BA          (0xf0842000)
@@ -359,7 +361,7 @@ static struct arm_boot_info npcm8xx_binfo = {
     .smp_loader_start       = NPCM8XX_SMP_LOADER_START,
     .smp_bootreg_addr       = NPCM8XX_SMP_BOOTREG_ADDR,
     .gic_cpu_if_addr        = NPCM8XX_GICC_BA,
-    .secure_boot            = false,
+    .secure_boot            = true,
     .board_id               = -1,
     .board_setup_addr       = NPCM8XX_BOARD_SETUP_ADDR,
 };
@@ -486,9 +488,13 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
         object_property_set_int(OBJECT(&s->cpu[i]), "core-count",
                                 nc->num_cpus, &error_abort);
 
-        /* Disable security extensions. */
-        object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", false,
+        qdev_prop_set_bit(DEVICE(&s->cpu[i]), "start-powered-off",
+                          i > 0);
+        object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", true,
                                  &error_abort);
+        // disable QEMU's internal PSCI
+        object_property_set_int(OBJECT(&s->cpu[i]), "psci-conduit",
+                                QEMU_PSCI_CONDUIT_DISABLED, &error_abort);
 
         if (!qdev_realize(DEVICE(&s->cpu[i]), NULL, errp)) {
             return;
@@ -501,7 +507,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     object_property_set_uint(OBJECT(&s->gic), "revision", 2, errp);
     object_property_set_bool(OBJECT(&s->gic), "has-security-extensions", true,
                              errp);
-    object_property_set_bool(OBJECT(&s->gic), "irq-reset-nonsecure", true,
+    object_property_set_bool(OBJECT(&s->gic), "irq-reset-nonsecure", false,
                              errp);
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->gic), errp)) {
         return;
@@ -742,6 +748,11 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
                            NPCM8XX_RAM3_SZ, &error_abort);
     memory_region_add_subregion(get_system_memory(), NPCM8XX_RAM3_BA, &s->ram3);
 
+    /* TIPCOM (Workaround) */
+    memory_region_init_ram(&s->ram_tip, OBJECT(dev), "tipcom",
+                           NPCM8XX_TIPCOM_SZ, &error_abort);
+    memory_region_add_subregion(get_system_memory(), NPCM8XX_TIPCOM_BA, &s->ram_tip);
+
     /* Internal ROM */
     memory_region_init_rom(&s->irom, OBJECT(dev), "irom", NPCM8XX_ROM_SZ,
                            &error_abort);
@@ -793,7 +804,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.pcs",          0xf0780000, 256 * KiB);
     create_unimplemented_device("npcm8xx.tsgen",        0xf07fc000,   8 * KiB);
     create_unimplemented_device("npcm8xx.copctl",       0xf080c000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.tipctl",       0xf080d000,   4 * KiB);
+    //create_unimplemented_device("npcm8xx.tipctl",       0xf080d000,   4 * KiB);
     create_unimplemented_device("npcm8xx.rst",          0xf080e000,   4 * KiB);
     create_unimplemented_device("npcm8xx.vcd",          0xf0810000,  64 * KiB);
     create_unimplemented_device("npcm8xx.ece",          0xf0820000,   8 * KiB);
