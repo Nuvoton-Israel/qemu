@@ -491,6 +491,11 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
 
 
 
+
+
+    object_property_set_bool(OBJECT(&s->gic), "irq-reset-nonsecure", true,
+                             errp);
+
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->gic), errp)) {
         return;
     }
