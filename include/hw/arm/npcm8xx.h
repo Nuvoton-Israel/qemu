@@ -40,7 +40,7 @@
 #include "hw/usb/hcd-ohci.h"
 #include "target/arm/cpu.h"
 
-#define NPCM8XX_MAX_NUM_CPUS    (1)
+#define NPCM8XX_MAX_NUM_CPUS    (4)
 
 /* The first half of the address space is reserved for DDR4 DRAM. */
 #define NPCM8XX_DRAM_BA         (0x00000000)
