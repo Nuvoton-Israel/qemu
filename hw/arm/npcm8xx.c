@@ -355,12 +355,10 @@ static const struct {
 
 static struct arm_boot_info npcm8xx_binfo = {
     .loader_start           = NPCM8XX_LOADER_START,
-    .smp_loader_start       = NPCM8XX_SMP_LOADER_START,
-    .smp_bootreg_addr       = NPCM8XX_SMP_BOOTREG_ADDR,
     .gic_cpu_if_addr        = NPCM8XX_GICC_BA,
-    .secure_boot            = false,
     .board_id               = -1,
     .board_setup_addr       = NPCM8XX_BOARD_SETUP_ADDR,
+    .psci_conduit = QEMU_PSCI_CONDUIT_SMC,
 };
 
 void npcm8xx_load_kernel(MachineState *machine, NPCM8xxState *soc)
@@ -478,6 +476,8 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
 
     /* CPUs */
     for (i = 0; i < nc->num_cpus; i++) {
+        ARMCPU *cpu = &s->cpu[i];
+        cpu->gt_cntfrq_hz = 0xbebc200;
         object_property_set_int(OBJECT(&s->cpu[i]), "mp-affinity",
                                 arm_build_mp_affinity(i, NPCM8XX_MAX_NUM_CPUS),
                                 &error_abort);
@@ -485,10 +485,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
                                  &error_abort);
         object_property_set_int(OBJECT(&s->cpu[i]), "core-count",
                                 nc->num_cpus, &error_abort);
-
-        qdev_prop_set_bit(DEVICE(&s->cpu[i]), "start-powered-off",
-                   i > 0);
-
+    
         /* Disable security extensions. */
         object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", true,
                                  &error_abort);
@@ -503,13 +500,6 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     object_property_set_uint(OBJECT(&s->gic), "num-irq", NPCM8XX_NUM_IRQ, errp);
     object_property_set_uint(OBJECT(&s->gic), "revision", 2, errp);
     object_property_set_bool(OBJECT(&s->gic), "has-security-extensions", true,
-                             errp);
-
-
-
-
-
-    object_property_set_bool(OBJECT(&s->gic), "irq-reset-nonsecure", true,
                              errp);
 
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->gic), errp)) {
