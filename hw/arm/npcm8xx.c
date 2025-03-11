@@ -484,6 +484,10 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
 
     /* CPUs */
     for (i = 0; i < nc->num_cpus; i++) {
+
+
+
+
         ARMCPU *cpu = &s->cpu[i];
         cpu->gt_cntfrq_hz = 0xbebc200;
         object_property_set_int(OBJECT(&s->cpu[i]), "mp-affinity",
@@ -498,8 +502,11 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
 
 
 
-        /* Disable security extensions. */
-        object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", false,
+
+
+
+
+        object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", true,
                                  &error_abort);
 
         if (!qdev_realize(DEVICE(&s->cpu[i]), NULL, errp)) {
