@@ -103,7 +103,7 @@ static void sdhci_attach_drive(SDHCIState *sdhci, int unit)
         exit(1);
     }
 
-    DeviceState *carddev = qdev_new(TYPE_SD_CARD);
+    DeviceState *carddev = qdev_new(TYPE_EMMC);
     qdev_prop_set_drive_err(carddev, "drive", blk, &error_fatal);
     qdev_realize_and_unref(carddev, bus, &error_fatal);
 }
