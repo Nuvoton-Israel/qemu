@@ -424,7 +424,7 @@ static void npcm8xx_init(Object *obj)
     object_initialize_child(obj, "clk", &s->clk, TYPE_NPCM8XX_CLK);
     object_initialize_child(obj, "otp", &s->fuse_array,
                             TYPE_NPCM7XX_FUSE_ARRAY);
-    object_initialize_child(obj, "mc", &s->mc, TYPE_NPCM7XX_MC);
+    object_initialize_child(obj, "mc", &s->mc, TYPE_NPCM8XX_MC);
     object_initialize_child(obj, "rng", &s->rng, TYPE_NPCM7XX_RNG);
     object_initialize_child(obj, "adc", &s->adc, TYPE_NPCM7XX_ADC);
 
