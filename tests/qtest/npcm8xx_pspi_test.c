@@ -47,7 +47,7 @@ static void test_init(gconstpointer pspi_p)
     QTestState *qts = qtest_init("-machine npcm845-evb");
     pspi_write_ctl(qts, pspi, CTL_SPIEN);
     g_assert_cmphex(pspi_read_ctl(qts, pspi), ==, CTL_SPIEN);
- 
+
     qtest_quit(qts);
 }
 
@@ -70,7 +70,7 @@ static void test_data(gconstpointer pspi_p)
     // Read from data registercd w
     output = pspi_read_data(qts, pspi);
     printf("Read 0x%x from data register\n", output);
-    
+
     qtest_quit(qts);
 }
 
