@@ -832,7 +832,6 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.gdma2",        0xf0852000,   4 * KiB);
     create_unimplemented_device("npcm8xx.aes",          0xf0858000,   4 * KiB);
     create_unimplemented_device("npcm8xx.des",          0xf0859000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.sha",          0xf085a000,   4 * KiB);
     create_unimplemented_device("npcm8xx.pci_mbox2",    0xf0868000,  64 * KiB);
     create_unimplemented_device("npcm8xx.i3c0",         0xfff10000,   4 * KiB);
     create_unimplemented_device("npcm8xx.i3c1",         0xfff11000,   4 * KiB);
