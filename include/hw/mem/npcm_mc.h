@@ -1,5 +1,5 @@
 /*
- * Nuvoton NPCM7xx Memory Controller stub
+ * Nuvoton NPCM7xx/8xx Memory Controller stub
  *
  * Copyright 2020 Google LLC
  *
@@ -13,24 +13,33 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
  * for more details.
  */
-#ifndef NPCM7XX_MC_H
-#define NPCM7XX_MC_H
+#ifndef NPCM_MC_H
+#define NPCM_MC_H
 
 #include "exec/memory.h"
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 /**
- * struct NPCM7xxMCState - Device state for the memory controller.
+ * struct NPCMMCState - Device state for the memory controller.
  * @parent: System bus device.
  * @mmio: Memory region through which registers are accessed.
  */
-typedef struct NPCM7xxMCState {
+typedef struct NPCMMCState {
     SysBusDevice parent;
 
     MemoryRegion mmio;
-} NPCM7xxMCState;
+} NPCMMCState;
 
+struct NPCMMCClass {
+    /*< private >*/
+    SysBusDeviceClass parent;
+    /*< public >*/
+};
+
+#define TYPE_NPCM_MC "npcm-mc"
 #define TYPE_NPCM7XX_MC "npcm7xx-mc"
-#define NPCM7XX_MC(obj) OBJECT_CHECK(NPCM7xxMCState, (obj), TYPE_NPCM7XX_MC)
+#define TYPE_NPCM8XX_MC "npcm8xx-mc"
+OBJECT_DECLARE_TYPE(NPCMMCState, NPCMMCClass, NPCM_MC)
 
-#endif /* NPCM7XX_MC_H */
+#endif /* NPCM_MC_H */

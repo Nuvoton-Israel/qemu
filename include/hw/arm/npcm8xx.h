@@ -23,7 +23,7 @@
 #include "hw/gpio/npcm7xx_gpio.h"
 #include "hw/i2c/npcm8xx_smbus.h"
 #include "hw/intc/arm_gic_common.h"
-#include "hw/mem/npcm7xx_mc.h"
+#include "hw/mem/npcm_mc.h"
 #include "hw/misc/npcm_clk.h"
 #include "hw/misc/npcm_gcr.h"
 #include "hw/misc/npcm7xx_mft.h"
@@ -96,7 +96,7 @@ struct NPCM8xxState {
     NPCM7xxPWMState     pwm[NPCM8XX_NR_PWM_MODULES];
     NPCM7xxMFTState     mft[8];
     NPCM7xxOTPState     fuse_array;
-    NPCM7xxMCState      mc;
+    NPCMMCState         mc;
     NPCM7xxRNGState     rng;
     NPCM7xxGPIOState    gpio[8];
     NPCM8xxSMBusState   smbus[27];
