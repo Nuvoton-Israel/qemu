@@ -1525,7 +1525,8 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
     case RDSFDP:
         if (s->pi->sfdp_read) {
-            s->needed_bytes = get_addr_length(s) + 1; /* SFDP addr + dummy */
+            /* Flash chip model expects one transfer per dummy bit, not byte */
+            s->needed_bytes = get_addr_length(s) + 8; /* SFDP addr + dummy */
             s->pos = 0;
             s->len = 0;
             s->state = STATE_COLLECTING_DATA;
