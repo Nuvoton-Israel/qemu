@@ -7755,7 +7755,11 @@ static int nvme_start_ctrl(NvmeCtrl *n)
     for (int i = 1; i <= NVME_MAX_NAMESPACES; i++) {
         NvmeNamespace *ns = nvme_subsys_ns(n->subsys, i);
 
-        if (ns && nvme_csi_supported(n, ns->csi) && !ns->params.detached) {
+        if (!ns || (!ns->params.shared && ns->ctrl != n)) {
+            continue;
+        }
+
+        if (nvme_csi_supported(n, ns->csi) && !ns->params.detached) {
             if (!ns->attached || ns->params.shared) {
                 nvme_attach_ns(n, ns);
             }
@@ -8600,8 +8604,7 @@ static int nvme_add_pm_capability(PCIDevice *pci_dev, uint8_t offset)
     Error *err = NULL;
     int ret;
 
-    ret = pci_add_capability(pci_dev, PCI_CAP_ID_PM, offset,
-                             PCI_PM_SIZEOF, &err);
+    ret = pci_pm_init(pci_dev, offset, &err);
     if (err) {
         error_report_err(err);
         return ret;
@@ -8989,6 +8992,7 @@ static void nvme_realize(PCIDevice *pci_dev, Error **errp)
     if (n->namespace.blkconf.blk) {
         ns = &n->namespace;
         ns->params.nsid = 1;
+        ns->ctrl = n;
 
         if (nvme_ns_setup(ns, errp)) {
             return;

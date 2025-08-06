@@ -858,6 +858,15 @@ QEMU.  Since all recent x86 hardware from the past >10 years is
 capable of the 64-bit x86 extensions, a corresponding 64-bit OS should
 be used instead.
 
+32-bit hosts for 64-bit guests (removed in 10.0)
+''''''''''''''''''''''''''''''''''''''''''''''''
+
+In general, 32-bit hosts cannot support the memory space or atomicity
+requirements of 64-bit guests.  Prior to 10.0, QEMU attempted to
+work around the atomicity issues in system mode by running all vCPUs
+in a single thread context; in user mode atomicity was simply broken.
+From 10.0, QEMU has disabled configuration of 64-bit guests on 32-bit hosts.
+
 Guest Emulator ISAs
 -------------------
 
@@ -1063,6 +1072,13 @@ has now passed away into history. We are therefore dropping support
 for all machine types using the PXA2xx and OMAP2 SoCs. We are also
 dropping the ``cheetah`` OMAP1 board, because we don't have any
 test images for it and don't know of anybody who does.
+
+ppc ``ref405ep`` machine (removed in 10.0)
+''''''''''''''''''''''''''''''''''''''''''
+
+This machine was removed because PPC 405 CPU have no known users,
+firmware images are not available, OpenWRT dropped support in 2019,
+U-Boot in 2017, and Linux in 2024.
 
 linux-user mode CPUs
 --------------------

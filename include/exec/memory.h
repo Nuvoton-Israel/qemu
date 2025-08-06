@@ -2162,7 +2162,7 @@ void memory_region_flush_rom_device(MemoryRegion *mr, hwaddr addr, hwaddr size);
  * only useful on RAM regions.
  *
  * @mr: the region being updated.
- * @readonly: whether rhe region is to be ROM or RAM.
+ * @readonly: whether the region is to be ROM or RAM.
  */
 void memory_region_set_readonly(MemoryRegion *mr, bool readonly);
 
@@ -2173,7 +2173,7 @@ void memory_region_set_readonly(MemoryRegion *mr, bool readonly);
  * only useful on RAM regions.
  *
  * @mr: the region being updated.
- * @nonvolatile: whether rhe region is to be non-volatile.
+ * @nonvolatile: whether the region is to be non-volatile.
  */
 void memory_region_set_nonvolatile(MemoryRegion *mr, bool nonvolatile);
 
@@ -3202,6 +3202,9 @@ bool ram_block_discard_is_disabled(void);
  * Test if any discarding of memory in ram blocks is required to work reliably.
  */
 bool ram_block_discard_is_required(void);
+
+void ram_block_add_cpr_blocker(RAMBlock *rb, Error **errp);
+void ram_block_del_cpr_blocker(RAMBlock *rb);
 
 #endif
 

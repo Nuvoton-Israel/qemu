@@ -33,6 +33,7 @@ class Aarch64RMESbsaRefMachine(QemuSystemTest):
     def test_aarch64_rme_sbsaref(self):
         self.set_machine('sbsa-ref')
         self.require_accelerator('tcg')
+        self.require_netdev('user')
 
         self.vm.set_console()
 
@@ -60,7 +61,8 @@ class Aarch64RMESbsaRefMachine(QemuSystemTest):
 
         self.vm.launch()
         # Wait for host VM boot to complete.
-        wait_for_console_pattern(self, 'Welcome to Buildroot')
+        wait_for_console_pattern(self, 'Welcome to Buildroot',
+                                 failure_message='Synchronous Exception at')
         exec_command_and_wait_for_pattern(self, 'root', '#')
 
         test_realms_guest(self)

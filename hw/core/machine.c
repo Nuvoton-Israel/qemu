@@ -44,6 +44,8 @@ GlobalProperty hw_compat_9_2[] = {
     { "virtio-balloon-pci-non-transitional", "vectors", "0" },
     { "virtio-mem-pci", "vectors", "0" },
     { "migration", "multifd-clean-tls-termination", "false" },
+    { "migration", "send-switchover-start", "off"},
+    { "vfio-pci", "x-migration-multifd-transfer", "off" },
 };
 const size_t hw_compat_9_2_len = G_N_ELEMENTS(hw_compat_9_2);
 
@@ -1729,12 +1731,6 @@ void qdev_machine_creation_done(void)
     phase_advance(PHASE_MACHINE_READY);
     qdev_assert_realized_properly();
 
-    /*
-     * If the user used -machine dumpdtb=file.dtb to request that we
-     * dump the DTB to a file,  do it now, and exit.
-     */
-    handle_machine_dumpdtb(current_machine);
-
     /* TODO: once all bus devices are qdevified, this should be done
      * when bus is created by qdev.c */
     /*
@@ -1747,6 +1743,12 @@ void qdev_machine_creation_done(void)
     qemu_register_resettable(OBJECT(sysbus_get_default()));
 
     notifier_list_notify(&machine_init_done_notifiers, NULL);
+
+    /*
+     * If the user used -machine dumpdtb=file.dtb to request that we
+     * dump the DTB to a file, do it now, and exit.
+     */
+    handle_machine_dumpdtb(current_machine);
 
     if (rom_check_and_register_reset() != 0) {
         exit(1);

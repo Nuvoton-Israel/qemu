@@ -5,7 +5,7 @@ Codebase
 This section presents the various parts of QEMU and how the codebase is
 organized.
 
-Beyond giving succint descriptions, the goal is to offer links to various
+Beyond giving succinct descriptions, the goal is to offer links to various
 parts of the documentation/codebase.
 
 Subsystems
@@ -23,7 +23,7 @@ Some of the main QEMU subsystems are:
 - `Devices<device-emulation>` & Board models
 - `Documentation <documentation-root>`
 - `GDB support<GDB usage>`
-- `Migration<migration>`
+- :ref:`Migration<migration>`
 - `Monitor<QEMU monitor>`
 - :ref:`QOM (QEMU Object Model)<qom>`
 - `System mode<System emulation>`
@@ -67,7 +67,7 @@ yet, so sometimes the source code is all you have.
 * `chardev <https://gitlab.com/qemu-project/qemu/-/tree/master/chardev>`_:
   Various backends used by char devices.
 * `common-user <https://gitlab.com/qemu-project/qemu/-/tree/master/common-user>`_:
-  User-mode assembly code for dealing with signals occuring during syscalls.
+  User-mode assembly code for dealing with signals occurring during syscalls.
 * `configs <https://gitlab.com/qemu-project/qemu/-/tree/master/configs>`_:
   Makefiles defining configurations to build QEMU.
 * `contrib <https://gitlab.com/qemu-project/qemu/-/tree/master/contrib>`_:
@@ -102,7 +102,7 @@ yet, so sometimes the source code is all you have.
 * `.gitlab-ci.d <https://gitlab.com/qemu-project/qemu/-/tree/master/.gitlab-ci.d>`_:
   `CI <ci>` yaml and scripts.
 * `include <https://gitlab.com/qemu-project/qemu/-/tree/master/include>`_:
-  All headers associated to different subsystems in QEMU. The hierachy used
+  All headers associated to different subsystems in QEMU. The hierarchy used
   mirrors source code organization and naming.
 * `hw <https://gitlab.com/qemu-project/qemu/-/tree/master/hw>`_:
   `Devices <device-emulation>` and boards emulation. Devices are categorized by
@@ -112,11 +112,11 @@ yet, so sometimes the source code is all you have.
 * `libdecnumber <https://gitlab.com/qemu-project/qemu/-/tree/master/libdecnumber>`_:
   Import of gcc library, used to implement decimal number arithmetic.
 * `migration <https://gitlab.com/qemu-project/qemu/-/tree/master/migration>`__:
-  `Migration framework <migration>`.
+  :ref:`Migration framework <migration>`.
 * `monitor <https://gitlab.com/qemu-project/qemu/-/tree/master/monitor>`_:
   `Monitor <QEMU monitor>` implementation (HMP & QMP).
 * `nbd <https://gitlab.com/qemu-project/qemu/-/tree/master/nbd>`_:
-  QEMU `NBD (Network Block Device) <nbd>` server.
+  QEMU NBD (Network Block Device) server.
 * `net <https://gitlab.com/qemu-project/qemu/-/tree/master/net>`_:
   Network (host) support.
 * `pc-bios <https://gitlab.com/qemu-project/qemu/-/tree/master/pc-bios>`_:
@@ -193,7 +193,7 @@ yet, so sometimes the source code is all you have.
   - `lcitool <https://gitlab.com/qemu-project/qemu/-/tree/master/tests/lcitool>`_:
     Generate dockerfiles for CI containers.
   - `migration <https://gitlab.com/qemu-project/qemu/-/tree/master/tests/migration>`_:
-    Test scripts and data for `Migration framework <migration>`.
+    Test scripts and data for :ref:`Migration framework <migration>`.
   - `multiboot <https://gitlab.com/qemu-project/qemu/-/tree/master/tests/multiboot>`_:
     Test multiboot functionality for x86_64/i386.
   - `qapi-schema <https://gitlab.com/qemu-project/qemu/-/tree/master/tests/qapi-schema>`_:

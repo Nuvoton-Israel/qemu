@@ -257,7 +257,7 @@ static void efuse_prop_release_drive(Object *obj, const char *name,
 }
 
 static const PropertyInfo efuse_prop_drive = {
-    .name  = "str",
+    .type  = "str",
     .description = "Node name or ID of a block device to use as eFUSE backend",
     .realized_set_allowed = true,
     .get = efuse_prop_get_drive,
@@ -280,6 +280,8 @@ static void efuse_class_init(ObjectClass *klass, void *data)
 
     dc->realize = efuse_realize;
     device_class_set_props(dc, efuse_properties);
+    /* Reason: Part of Xilinx SoC */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo efuse_info = {
