@@ -40,6 +40,7 @@
 #include "hw/usb/hcd-ohci.h"
 #include "target/arm/cpu.h"
 #include "hw/ssi/npcm_pspi.h"
+#include "hw/gpio/npcm8xx_sgpio.h"
 
 #define NPCM8XX_MAX_NUM_CPUS    (4)
 
@@ -108,6 +109,7 @@ struct NPCM8xxState {
     NPCMPSPIState    pspi;
     NPCM8xxTIPCTLState     tipctl;
     NPCM8xxSHAState     sha;
+    NPCM8xxSGPIOState   sgpio[2];
 };
 
 struct NPCM8xxClass {
