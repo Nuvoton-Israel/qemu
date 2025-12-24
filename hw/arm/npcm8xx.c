@@ -367,7 +367,6 @@ static struct arm_boot_info npcm8xx_binfo = {
     .secure_boot            = false,
     .board_id               = -1,
     .board_setup_addr       = NPCM8XX_BOARD_SETUP_ADDR,
-    .psci_conduit           = QEMU_PSCI_CONDUIT_SMC,
 };
 
 void npcm8xx_load_kernel(MachineState *machine, NPCM8xxState *soc)
@@ -489,6 +488,9 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
 
     /* CPUs */
     for (i = 0; i < nc->num_cpus; i++) {
+        /* WA: force set up all cpu clock */
+        ARMCPU *cpu = &s->cpu[i];
+        cpu->gt_cntfrq_hz = 0xbebc200;
         object_property_set_int(OBJECT(&s->cpu[i]), "mp-affinity",
                                 arm_build_mp_affinity(i, NPCM8XX_MAX_NUM_CPUS),
                                 &error_abort);
@@ -500,6 +502,9 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
         /* Disable security extensions. */
         object_property_set_bool(OBJECT(&s->cpu[i]), "has_el3", true,
                                  &error_abort);
+        /* disable QEMU's internal PSCI */
+        object_property_set_int(OBJECT(&s->cpu[i]), "psci-conduit",
+                                QEMU_PSCI_CONDUIT_DISABLED, &error_abort);
 
         if (!qdev_realize(DEVICE(&s->cpu[i]), NULL, errp)) {
             return;
