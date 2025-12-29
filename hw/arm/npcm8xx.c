@@ -722,7 +722,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     /* USB Host */
     QEMU_BUILD_BUG_ON(ARRAY_SIZE(s->ohci) != ARRAY_SIZE(s->ehci));
     for (i = 0; i < ARRAY_SIZE(s->ehci); i++) {
-        object_property_set_bool(OBJECT(&s->ehci[i]), "companion-enable", true,
+        object_property_set_bool(OBJECT(&s->ehci[i]), "companion-enable", false,
                                  &error_abort);
         sysbus_realize(SYS_BUS_DEVICE(&s->ehci[i]), &error_abort);
         sysbus_mmio_map(SYS_BUS_DEVICE(&s->ehci[i]), 0, npcm8xx_ehci_addr[i]);
@@ -730,11 +730,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
                            npcm8xx_irq(s, NPCM8XX_EHCI1_IRQ + 2 * i));
     }
     for (i = 0; i < ARRAY_SIZE(s->ohci); i++) {
-        object_property_set_str(OBJECT(&s->ohci[i]), "masterbus", "usb-bus.0",
-                                &error_abort);
         object_property_set_uint(OBJECT(&s->ohci[i]), "num-ports", 1,
-                                 &error_abort);
-        object_property_set_uint(OBJECT(&s->ohci[i]), "firstport", i,
                                  &error_abort);
         sysbus_realize(SYS_BUS_DEVICE(&s->ohci[i]), &error_abort);
         sysbus_mmio_map(SYS_BUS_DEVICE(&s->ohci[i]), 0, npcm8xx_ohci_addr[i]);
