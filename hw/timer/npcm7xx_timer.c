@@ -61,6 +61,7 @@ enum NPCM7xxTimerRegisters {
 #define NPCM7XX_TCSR_PRESCALE_START     0
 #define NPCM7XX_TCSR_PRESCALE_LEN       8
 
+#define NPCM7XX_WTCR_WDT_CNT(rv)        extract32(rv, 16, 8)
 #define NPCM7XX_WTCR_WTCLK(rv)          extract32(rv, 10, 2)
 #define NPCM7XX_WTCR_FREEZE_EN          BIT(9)
 #define NPCM7XX_WTCR_WTE                BIT(7)
@@ -179,7 +180,7 @@ static void npcm7xx_watchdog_timer_reset_cycles(NPCM7xxWatchdogTimer *t,
 
 static void npcm7xx_watchdog_timer_reset(NPCM7xxWatchdogTimer *t)
 {
-    int64_t cycles = 1;
+    int64_t cycles = NPCM7XX_WTCR_WDT_CNT(t->wtcr) + 1;
     uint32_t s = NPCM7XX_WTCR_WTIS(t->wtcr);
 
     g_assert(s <= 3);
