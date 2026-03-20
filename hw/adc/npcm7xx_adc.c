@@ -57,6 +57,11 @@ static uint32_t npcm7xx_adc_convert(uint32_t input, uint32_t ref)
 {
     uint32_t result;
 
+    if (ref == 0) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: ref voltage is 0, returning 0\n", __func__);
+        return 0;
+    }
     result = input * (NPCM7XX_ADC_MAX_RESULT + 1) / ref;
     if (result > NPCM7XX_ADC_MAX_RESULT) {
         result = NPCM7XX_ADC_MAX_RESULT;
