@@ -98,6 +98,8 @@ enum NPCM7xxFIURegister {
 #define FIU_UMA_CTS_SW_CS BIT(16)
 #define FIU_UMA_CTS_DEV_NUM(rv) extract32(rv, 8, 2)
 #define FIU_UMA_CTS_EXEC_DONE BIT(0)
+#define JEDEC_READ 0x9f
+#define MACRONIX_ID 0xc2
 
 /*
  * Returns the index of flash in the fiu->flash array. This corresponds to the
@@ -159,6 +161,13 @@ static uint64_t npcm7xx_fiu_flash_read(void *opaque, hwaddr addr,
                       DEVICE(fiu)->canonical_path, fiu->active_cs);
     }
 
+    if (f->m_id == 0) {
+        npcm7xx_fiu_select(fiu, npcm7xx_fiu_cs_index(fiu, f));
+        ssi_transfer(fiu->spi, JEDEC_READ);
+        f->m_id = ssi_transfer(fiu->spi, 0);
+        npcm7xx_fiu_deselect(fiu);
+    }
+
     npcm7xx_fiu_select(fiu, npcm7xx_fiu_cs_index(fiu, f));
 
     drd_cfg = fiu->regs[NPCM7XX_FIU_DRD_CFG];
@@ -181,8 +190,17 @@ static uint64_t npcm7xx_fiu_flash_read(void *opaque, hwaddr addr,
     }
 
     /* Flash chip model expects one transfer per dummy bit, not byte */
-    dummy_cycles =
-        (FIU_DRD_CFG_DBW(drd_cfg) * 8) >> FIU_DRD_CFG_ACCTYPE(drd_cfg);
+    if (FIU_DRD_CFG_ACCTYPE(drd_cfg) > 0) {
+        if (f->m_id == MACRONIX_ID) {
+            dummy_cycles =
+                (FIU_DRD_CFG_DBW(drd_cfg) * 8) >> FIU_DRD_CFG_ACCTYPE(drd_cfg);
+        } else {
+            dummy_cycles = FIU_DRD_CFG_DBW(drd_cfg);
+        }
+    } else {
+        dummy_cycles = FIU_DRD_CFG_DBW(drd_cfg) * 8;
+    }
+
     for (i = 0; i < dummy_cycles; i++) {
         ssi_transfer(fiu->spi, 0);
     }
