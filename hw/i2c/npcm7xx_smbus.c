@@ -24,6 +24,7 @@
 #include "qemu/module.h"
 #include "qemu/units.h"
 
+#include "hw/qdev-properties.h"
 #include "trace.h"
 
 enum NPCM7xxSMBusCommonRegister {
@@ -142,21 +143,20 @@ enum NPCM7xxSMBusBank1Register {
 #define NPCM7XX_SMBFIF_CTS_RXF_TXE          BIT(1)
 /* TXF_CTL fields */
 #define NPCM7XX_SMBTXF_CTL_THR_TXIE         BIT(6)
-#define NPCM7XX_SMBTXF_CTL_TX_THR(rv)       extract8((rv), 0, 5)
+#define NPCM7XX_SMBTXF_CTL_TX_THR(s, rv)    ((rv) & (s)->tx_bytes_mask)
 /* T_OUT fields */
 #define NPCM7XX_SMBT_OUT_ST                 BIT(7)
 #define NPCM7XX_SMBT_OUT_IE                 BIT(6)
 #define NPCM7XX_SMBT_OUT_CLKDIV(rv)         extract8((rv), 0, 6)
 /* TXF_STS fields */
 #define NPCM7XX_SMBTXF_STS_TX_THST          BIT(6)
-#define NPCM7XX_SMBTXF_STS_TX_BYTES(rv)     extract8((rv), 0, 5)
+#define NPCM7XX_SMBTXF_STS_TX_BYTES(s, rv)  ((rv) & (s)->tx_bytes_mask)
 /* RXF_STS fields */
 #define NPCM7XX_SMBRXF_STS_RX_THST          BIT(6)
-#define NPCM7XX_SMBRXF_STS_RX_BYTES(rv)     extract8((rv), 0, 5)
+#define NPCM7XX_SMBRXF_STS_RX_BYTES(s, rv)  ((rv) & (s)->rx_bytes_mask)
 /* RXF_CTL fields */
 #define NPCM7XX_SMBRXF_CTL_THR_RXIE         BIT(6)
-#define NPCM7XX_SMBRXF_CTL_LAST             BIT(5)
-#define NPCM7XX_SMBRXF_CTL_RX_THR(rv)       extract8((rv), 0, 5)
+#define NPCM7XX_SMBRXF_CTL_RX_THR(s, rv)    ((rv) & (s)->rx_bytes_mask)
 
 #define KEEP_OLD_BIT(o, n, b)       (((n) & (~(b))) | ((o) & (b)))
 #define WRITE_ONE_CLEAR(o, n, b)    ((n) & (b) ? (o) & (~(b)) : (o))
@@ -251,8 +251,8 @@ static void npcm7xx_smbus_send_byte(NPCM7xxSMBusState *s, uint8_t value)
         s->st |= NPCM7XX_SMBST_SDAST;
         if (NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
             s->fif_cts |= NPCM7XX_SMBFIF_CTS_RXF_TXE;
-            if (NPCM7XX_SMBTXF_STS_TX_BYTES(s->txf_sts) ==
-                NPCM7XX_SMBTXF_CTL_TX_THR(s->txf_ctl)) {
+            if (NPCM7XX_SMBTXF_STS_TX_BYTES(s, s->txf_sts) ==
+                NPCM7XX_SMBTXF_CTL_TX_THR(s, s->txf_ctl)) {
                 s->txf_sts = NPCM7XX_SMBTXF_STS_TX_THST;
             } else {
                 s->txf_sts = 0;
@@ -278,8 +278,8 @@ static void npcm7xx_smbus_recv_byte(NPCM7xxSMBusState *s)
 
 static void npcm7xx_smbus_recv_fifo(NPCM7xxSMBusState *s)
 {
-    uint8_t expected_bytes = NPCM7XX_SMBRXF_CTL_RX_THR(s->rxf_ctl);
-    uint8_t received_bytes = NPCM7XX_SMBRXF_STS_RX_BYTES(s->rxf_sts);
+    uint8_t expected_bytes = NPCM7XX_SMBRXF_CTL_RX_THR(s, s->rxf_ctl);
+    uint8_t received_bytes = NPCM7XX_SMBRXF_STS_RX_BYTES(s, s->rxf_sts);
     uint8_t pos;
 
     if (received_bytes == expected_bytes) {
@@ -287,8 +287,8 @@ static void npcm7xx_smbus_recv_fifo(NPCM7xxSMBusState *s)
     }
 
     while (received_bytes < expected_bytes &&
-           received_bytes < NPCM7XX_SMBUS_FIFO_SIZE) {
-        pos = (s->rx_cur + received_bytes) % NPCM7XX_SMBUS_FIFO_SIZE;
+           received_bytes < s->fifo_size) {
+        pos = (s->rx_cur + received_bytes) % s->fifo_size;
         s->rx_fifo[pos] = i2c_recv(s->bus);
         trace_npcm7xx_smbus_recv_byte((DEVICE(s)->canonical_path),
                                       s->rx_fifo[pos]);
@@ -306,12 +306,12 @@ static void npcm7xx_smbus_recv_fifo(NPCM7xxSMBusState *s)
     }
 
     s->rxf_sts |= NPCM7XX_SMBRXF_STS_RX_THST;
-    if (s->rxf_ctl & NPCM7XX_SMBRXF_CTL_LAST) {
+    if (s->rxf_ctl & s->last_bit) {
         trace_npcm7xx_smbus_nack(DEVICE(s)->canonical_path);
         i2c_nack(s->bus);
-        s->rxf_ctl &= ~NPCM7XX_SMBRXF_CTL_LAST;
+        s->rxf_ctl &= ~s->last_bit;
     }
-    if (received_bytes == NPCM7XX_SMBUS_FIFO_SIZE) {
+    if (received_bytes == s->fifo_size) {
         s->st |= NPCM7XX_SMBST_SDAST;
         s->fif_cts |= NPCM7XX_SMBFIF_CTS_RXF_TXE;
     } else if (!(s->rxf_ctl & NPCM7XX_SMBRXF_CTL_THR_RXIE)) {
@@ -324,7 +324,7 @@ static void npcm7xx_smbus_recv_fifo(NPCM7xxSMBusState *s)
 
 static void npcm7xx_smbus_read_byte_fifo(NPCM7xxSMBusState *s)
 {
-    uint8_t received_bytes = NPCM7XX_SMBRXF_STS_RX_BYTES(s->rxf_sts);
+    uint8_t received_bytes = NPCM7XX_SMBRXF_STS_RX_BYTES(s, s->rxf_sts);
 
     if (received_bytes == 0) {
         npcm7xx_smbus_recv_fifo(s);
@@ -332,7 +332,7 @@ static void npcm7xx_smbus_read_byte_fifo(NPCM7xxSMBusState *s)
     }
 
     s->sda = s->rx_fifo[s->rx_cur];
-    s->rx_cur = (s->rx_cur + 1u) % NPCM7XX_SMBUS_FIFO_SIZE;
+    s->rx_cur = (s->rx_cur + 1u) % s->fifo_size;
     --s->rxf_sts;
     npcm7xx_smbus_update_irq(s);
 }
@@ -456,10 +456,10 @@ static uint8_t npcm7xx_smbus_read_sda(NPCM7xxSMBusState *s)
     switch (s->status) {
     case NPCM7XX_SMBUS_STATUS_STOPPING_LAST_RECEIVE:
         if (NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
-            if (NPCM7XX_SMBRXF_STS_RX_BYTES(s->rxf_sts) <= 1) {
+            if (NPCM7XX_SMBRXF_STS_RX_BYTES(s, s->rxf_sts) <= 1) {
                 npcm7xx_smbus_execute_stop(s);
             }
-            if (NPCM7XX_SMBRXF_STS_RX_BYTES(s->rxf_sts) == 0) {
+            if (NPCM7XX_SMBRXF_STS_RX_BYTES(s, s->rxf_sts) == 0) {
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "%s: read to SDA with an empty rx-fifo buffer, "
                               "result undefined: %u\n",
@@ -647,8 +647,8 @@ static void npcm7xx_smbus_write_rxf_ctl(NPCM7xxSMBusState *s, uint8_t value)
 {
     uint8_t new_ctl = value;
 
-    if (!(value & NPCM7XX_SMBRXF_CTL_LAST)) {
-        new_ctl = KEEP_OLD_BIT(s->rxf_ctl, new_ctl, NPCM7XX_SMBRXF_CTL_LAST);
+    if (!(value & s->last_bit)) {
+        new_ctl = KEEP_OLD_BIT(s->rxf_ctl, new_ctl, s->last_bit);
     }
     s->rxf_ctl = new_ctl;
 }
@@ -1071,8 +1071,19 @@ static const VMStateDescription vmstate_npcm7xx_smbus = {
         VMSTATE_UINT8_ARRAY(rx_fifo, NPCM7xxSMBusState,
                             NPCM7XX_SMBUS_FIFO_SIZE),
         VMSTATE_UINT8(rx_cur, NPCM7xxSMBusState),
+        VMSTATE_UINT8(fifo_size, NPCM7xxSMBusState),
+        VMSTATE_UINT8(tx_bytes_mask, NPCM7xxSMBusState),
+        VMSTATE_UINT8(rx_bytes_mask, NPCM7xxSMBusState),
+        VMSTATE_UINT8(last_bit, NPCM7xxSMBusState),
         VMSTATE_END_OF_LIST(),
     },
+};
+
+static const Property npcm7xx_smbus_properties[] = {
+    DEFINE_PROP_UINT8("fifo-size", NPCM7xxSMBusState, fifo_size, 16),
+    DEFINE_PROP_UINT8("tx-bytes-mask", NPCM7xxSMBusState, tx_bytes_mask, 0x1F),
+    DEFINE_PROP_UINT8("rx-bytes-mask", NPCM7xxSMBusState, rx_bytes_mask, 0x1F),
+    DEFINE_PROP_UINT8("last-bit", NPCM7xxSMBusState, last_bit, BIT(5)),
 };
 
 static void npcm7xx_smbus_class_init(ObjectClass *klass, const void *data)
@@ -1082,6 +1093,7 @@ static void npcm7xx_smbus_class_init(ObjectClass *klass, const void *data)
 
     dc->desc = "NPCM7xx System Management Bus";
     dc->vmsd = &vmstate_npcm7xx_smbus;
+    device_class_set_props(dc, npcm7xx_smbus_properties);
     rc->phases.enter = npcm7xx_smbus_enter_reset;
     rc->phases.hold = npcm7xx_smbus_hold_reset;
 }
