@@ -31,6 +31,7 @@
 #include "system/blockdev.h"
 #include "system/system.h"
 #include "system/block-backend.h"
+#include "system/tpm_backend.h"
 #include "qemu/error-report.h"
 
 
@@ -53,6 +54,10 @@
         NPCM7XX_POWER_ON_STRAPS_DEFAULT & ~NPCM7XX_PWRON_STRAP_SFAB)
 #define KUDO_BMC_POWER_ON_STRAPS NPCM7XX_POWER_ON_STRAPS_DEFAULT
 #define MORI_BMC_POWER_ON_STRAPS NPCM7XX_POWER_ON_STRAPS_DEFAULT
+#define BUV_RUNBMC_POWER_ON_STRAPS \
+    (NPCM7XX_POWER_ON_STRAPS_DEFAULT & ~NPCM7XX_PWRON_STRAP_FUP(FUP_NORM_UART2))
+#define OLYMPUS_POWER_ON_STRAPS \
+    (NPCM7XX_POWER_ON_STRAPS_DEFAULT & ~NPCM7XX_PWRON_STRAP_FUP(FUP_NORM_UART2))
 
 static const char npcm7xx_default_bootrom[] = "npcm7xx_bootrom.bin";
 
@@ -88,6 +93,7 @@ static void npcm7xx_connect_flash(NPCM7xxFIUState *fiu, int cs_no,
     if (dinfo) {
         qdev_prop_set_drive(flash, "drive", blk_by_legacy_dinfo(dinfo));
     }
+    qdev_prop_set_uint8(flash, "cs", cs_no);
     qdev_realize_and_unref(flash, BUS(fiu->spi), &error_fatal);
 
     flash_cs = qdev_get_gpio_in_named(flash, SSI_GPIO_CS, 0);
@@ -445,6 +451,121 @@ static void mori_bmc_init(MachineState *machine)
     npcm7xx_load_kernel(machine, soc);
 }
 
+static void buv_runbmc_i2c_init(NPCM7xxState *soc)
+{
+    I2CBus *i2c[16];
+    I2CSlave *i2c_mux;
+    int i;
+
+    for (i = 0; i < 16; i++) {
+        i2c[i] = npcm7xx_i2c_get_bus(soc, i);
+    }
+
+    /* Bus 4: 24c64 EEPROM */
+    at24c_eeprom_init(i2c[4], 0x50, 8192);
+
+    /* Bus 11: PCA9555, PCA9554 */
+    i2c_slave_create_simple(i2c[11], "pca9552", 0x21);
+    i2c_slave_create_simple(i2c[11], "pca9554", 0x38);
+
+    /* Bus 12: Mux pca9548 */
+    i2c_mux = i2c_slave_create_simple(i2c[12], TYPE_PCA9548, 0x70);
+    i2c_slave_create_simple(pca954x_i2c_get_bus(i2c_mux, 0), "tmp105", 0x48);
+
+    /* Bus 13: tmp105, 24c128 */
+    i2c_slave_create_simple(i2c[13], "tmp105", 0x4a);
+    at24c_eeprom_init(i2c[13], 0x51, 16384);
+}
+
+static void buv_runbmc_init(MachineState *machine)
+{
+    NPCM7xxState *soc;
+
+    soc = npcm7xx_create_soc(machine, BUV_RUNBMC_POWER_ON_STRAPS);
+    npcm7xx_connect_dram(soc, machine->ram);
+    qdev_realize(DEVICE(soc), NULL, &error_fatal);
+
+    npcm7xx_load_bootrom(machine, soc);
+
+    /*
+     * FIU0 CS0 & CS1
+     * Drive 0 is FIU0, unit 0 is CS0, unit 1 is CS1.
+     */
+    npcm7xx_connect_flash(&soc->fiu[0], 0, "w25q512jv", drive_get(IF_MTD, 0, 0));
+    npcm7xx_connect_flash(&soc->fiu[0], 1, "w25q512jv", drive_get(IF_MTD, 0, 1));
+
+    /*
+     * FIU3 CS0
+     * Drive 3 is FIU3, unit 0 is CS0.
+     */
+    npcm7xx_connect_flash(&soc->fiu[1], 0, "w25q256", drive_get(IF_MTD, 3, 0));
+
+    buv_runbmc_i2c_init(soc);
+    npcm7xx_load_kernel(machine, soc);
+}
+
+static void olympus_i2c_init(NPCM7xxState *soc)
+{
+    I2CBus *i2c[16];
+    int i;
+
+    for (i = 0; i < 16; i++) {
+        i2c[i] = npcm7xx_i2c_get_bus(soc, i);
+    }
+
+    /* Bus 1: Muxes */
+    i2c_slave_create_simple(i2c[1], TYPE_PCA9548, 0x70);
+    i2c_slave_create_simple(i2c[1], "pca9546", 0x71);
+
+    /* Bus 2: sensors */
+    i2c_slave_create_simple(i2c[2], "tmp421", 0x4c);
+
+    /* Bus 4: 24c64 EEPROM */
+    at24c_eeprom_init(i2c[4], 0x54, 8192);
+
+    /* Bus 7: sensors */
+    i2c_slave_create_simple(i2c[7], "tmp421", 0x4c);
+
+    /* Bus 10: pca9555 -> use pca9552 16-bit model */
+    i2c_slave_create_simple(i2c[10], "pca9552", 0x27);
+
+    /* Bus 11: pca9539 -> use pca9552 16-bit model */
+    i2c_slave_create_simple(i2c[11], "pca9552", 0x74);
+    i2c_slave_create_simple(i2c[11], "pca9552", 0x75);
+
+    /* Bus 12: pca9539 -> use pca9552 16-bit model */
+    i2c_slave_create_simple(i2c[12], "pca9552", 0x74);
+    i2c_slave_create_simple(i2c[12], "pca9552", 0x75);
+}
+
+
+static void olympus_init(MachineState *machine)
+{
+    NPCM7xxState *soc;
+
+    soc = npcm7xx_create_soc(machine, OLYMPUS_POWER_ON_STRAPS);
+    npcm7xx_connect_dram(soc, machine->ram);
+    qdev_realize(DEVICE(soc), NULL, &error_fatal);
+
+    npcm7xx_load_bootrom(machine, soc);
+
+    /*
+     * FIU0 CS0 & CS1
+     * Drive 0 is FIU0, unit 0 is CS0, unit 1 is CS1.
+     */
+    npcm7xx_connect_flash(&soc->fiu[0], 0, "w25q512jv", drive_get(IF_MTD, 0, 0));
+    npcm7xx_connect_flash(&soc->fiu[0], 1, "w25q256", drive_get(IF_MTD, 0, 1));
+
+    /*
+     * FIU3 CS0
+     * Drive 3 is FIU3, unit 0 is CS0.
+     */
+    npcm7xx_connect_flash(&soc->fiu[1], 0, "w25q256", drive_get(IF_MTD, 3, 0));
+
+    olympus_i2c_init(soc);
+    npcm7xx_load_kernel(machine, soc);
+}
+
 static void npcm7xx_set_soc_type(NPCM7xxMachineClass *nmc, const char *type)
 {
     NPCM7xxClass *sc = NPCM7XX_CLASS(object_class_by_name(type));
@@ -538,6 +659,30 @@ static void mori_bmc_machine_class_init(ObjectClass *oc, const void *data)
     mc->default_ram_size = 1 * GiB;
 }
 
+static void buv_runbmc_machine_class_init(ObjectClass *oc, const void *data)
+{
+    NPCM7xxMachineClass *nmc = NPCM7XX_MACHINE_CLASS(oc);
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    npcm7xx_set_soc_type(nmc, TYPE_NPCM750);
+
+    mc->desc = "Nuvoton npcm750 BUV RunBMC (Cortex-A9)";
+    mc->init = buv_runbmc_init;
+    mc->default_ram_size = 512 * MiB;
+}
+
+static void olympus_machine_class_init(ObjectClass *oc, const void *data)
+{
+    NPCM7xxMachineClass *nmc = NPCM7XX_MACHINE_CLASS(oc);
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    npcm7xx_set_soc_type(nmc, TYPE_NPCM750);
+
+    mc->desc = "Nuvoton NPCM750 Olympus (Cortex-A9)";
+    mc->init = olympus_init;
+    mc->default_ram_size = 1 * GiB;
+}
+
 static const TypeInfo npcm7xx_machine_types[] = {
     {
         .name           = TYPE_NPCM7XX_MACHINE,
@@ -570,6 +715,16 @@ static const TypeInfo npcm7xx_machine_types[] = {
         .name           = MACHINE_TYPE_NAME("mori-bmc"),
         .parent         = TYPE_NPCM7XX_MACHINE,
         .class_init     = mori_bmc_machine_class_init,
+        .interfaces     = arm_machine_interfaces,
+    }, {
+        .name           = MACHINE_TYPE_NAME("buv-runbmc"),
+        .parent         = TYPE_NPCM7XX_MACHINE,
+        .class_init     = buv_runbmc_machine_class_init,
+        .interfaces     = arm_machine_interfaces,
+    }, {
+        .name           = MACHINE_TYPE_NAME("olympus-nuvoton"),
+        .parent         = TYPE_NPCM7XX_MACHINE,
+        .class_init     = olympus_machine_class_init,
         .interfaces     = arm_machine_interfaces,
     },
 };
