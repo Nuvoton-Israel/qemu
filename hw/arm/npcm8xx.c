@@ -713,6 +713,10 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     for (i = 0; i < ARRAY_SIZE(s->smbus); i++) {
         Object *obj = OBJECT(&s->smbus[i]);
 
+        object_property_set_uint(obj, "fifo-size", 32, &error_abort);
+        object_property_set_uint(obj, "tx-bytes-mask", 0x3F, &error_abort);
+        object_property_set_uint(obj, "rx-bytes-mask", 0x3F, &error_abort);
+        object_property_set_uint(obj, "last-bit", BIT(7), &error_abort);
         sysbus_realize(SYS_BUS_DEVICE(obj), &error_abort);
         sysbus_mmio_map(SYS_BUS_DEVICE(obj), 0, npcm8xx_smbus_addr[i]);
         sysbus_connect_irq(SYS_BUS_DEVICE(obj), 0,

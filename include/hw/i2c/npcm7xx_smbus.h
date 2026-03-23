@@ -28,7 +28,7 @@
 #define NPCM7XX_SMBUS_NR_ADDRS 10
 
 /* Size of the FIFO buffer. */
-#define NPCM7XX_SMBUS_FIFO_SIZE 16
+#define NPCM7XX_SMBUS_FIFO_SIZE 32
 
 typedef enum NPCM7xxSMBusStatus {
     NPCM7XX_SMBUS_STATUS_IDLE,
@@ -67,6 +67,10 @@ typedef enum NPCM7xxSMBusStatus {
  * @rx_fifo: The FIFO buffer for receiving in FIFO mode.
  * @rx_cur: The current position of rx_fifo.
  * @status: The current status of the SMBus.
+ * @fifo_size: The size of the FIFO for this instance.
+ * @tx_bytes_mask: Mask for the number of bytes in the TX FIFO.
+ * @rx_bytes_mask: Mask for the number of bytes in the RX FIFO.
+ * @last_bit: The position of the LAST bit in the RXF_CTL register.
  */
 struct NPCM7xxSMBusState {
     SysBusDevice parent;
@@ -104,6 +108,11 @@ struct NPCM7xxSMBusState {
     uint8_t      rx_cur;
 
     NPCM7xxSMBusStatus status;
+
+    uint8_t      fifo_size;
+    uint8_t      tx_bytes_mask;
+    uint8_t      rx_bytes_mask;
+    uint8_t      last_bit;
 };
 
 #define TYPE_NPCM7XX_SMBUS "npcm7xx-smbus"
