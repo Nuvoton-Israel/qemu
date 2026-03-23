@@ -34,6 +34,7 @@
 #include "hw/timer/npcm7xx_timer.h"
 #include "hw/ssi/npcm7xx_fiu.h"
 #include "hw/ssi/npcm_pspi.h"
+#include "hw/misc/npcm_sha.h"
 #include "hw/usb/hcd-ehci.h"
 #include "hw/usb/hcd-ohci.h"
 #include "target/arm/cpu.h"
@@ -108,6 +109,7 @@ struct NPCM7xxState {
     NPCMGMACState       gmac[2];
     NPCM7xxSDHCIState   mmc;
     NPCMPSPIState       pspi[2];
+    NPCM8xxSHAState     sha;
 };
 
 #define TYPE_NPCM7XX    "npcm7xx"
