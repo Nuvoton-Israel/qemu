@@ -19,6 +19,7 @@
 #include "hw/arm/boot.h"
 #include "hw/arm/npcm7xx.h"
 #include "hw/char/serial-mm.h"
+#include "hw/misc/npcm_sha.h"
 #include "hw/loader.h"
 #include "hw/misc/unimp.h"
 #include "hw/qdev-clock.h"
@@ -74,6 +75,8 @@
 #define NPCM7XX_PLLCON1_FIXUP_VAL   (0x00402101)
 /* Run the CPU from PLL1 and UART from PLL2 */
 #define NPCM7XX_CLKSEL_FIXUP_VAL    (0x004aaba9)
+
+#define NPCM7XX_SHA_BA          (0xf085a000)
 
 /*
  * Interrupt lines going into the GIC. This does not include internal Cortex-A9
@@ -475,6 +478,8 @@ static void npcm7xx_init(Object *obj)
     }
 
     object_initialize_child(obj, "mmc", &s->mmc, TYPE_NPCM7XX_SDHCI);
+
+    object_initialize_child(obj, "sha", &s->sha, TYPE_NPCM8XX_SHA);
 }
 
 static void npcm7xx_realize(DeviceState *dev, Error **errp)
@@ -780,6 +785,10 @@ static void npcm7xx_realize(DeviceState *dev, Error **errp)
         sysbus_mmio_map(sbd, 0, npcm7xx_pspi_addr[i]);
         sysbus_connect_irq(sbd, 0, npcm7xx_irq(s, irq));
     }
+
+    /* SHA */
+    sysbus_realize(SYS_BUS_DEVICE(&s->sha), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->sha), 0, NPCM7XX_SHA_BA);
 
     create_unimplemented_device("npcm7xx.shm",          0xc0001000,   4 * KiB);
     create_unimplemented_device("npcm7xx.vdmx",         0xe0800000,   4 * KiB);
