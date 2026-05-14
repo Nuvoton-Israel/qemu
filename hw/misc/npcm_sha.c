@@ -8,7 +8,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/misc/npcm_sha.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "trace.h"

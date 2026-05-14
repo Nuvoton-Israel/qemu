@@ -18,7 +18,7 @@
 
 #include "system/memory.h"
 #include "hw/core/sysbus.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "qom/object.h"
 
 /**

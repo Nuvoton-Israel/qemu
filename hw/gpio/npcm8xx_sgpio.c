@@ -8,8 +8,8 @@
 #include "qemu/osdep.h"
 
 #include "hw/gpio/npcm8xx_sgpio.h"
-#include "hw/irq.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/irq.h"
+#include "hw/core/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"

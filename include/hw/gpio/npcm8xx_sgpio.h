@@ -7,7 +7,7 @@
 #ifndef NPCM8XX_SGPIO_H
 #define NPCM8XX_SGPIO_H
 
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 
 /* Number of pins managed by each controller. */
 #define NPCM8XX_SGPIO_NR_PINS (64)

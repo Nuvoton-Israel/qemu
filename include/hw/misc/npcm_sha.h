@@ -9,7 +9,7 @@
 #ifndef NPCM_SHA_H
 #define NPCM_SHA_H
 
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include <nettle/sha.h>
 
 typedef struct NPCM8xxSHAState {

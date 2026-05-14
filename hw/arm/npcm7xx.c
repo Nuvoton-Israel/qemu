@@ -21,7 +21,6 @@
 #include "hw/char/serial-mm.h"
 #include "hw/core/loader.h"
 #include "hw/misc/npcm_sha.h"
-#include "hw/loader.h"
 #include "hw/misc/unimp.h"
 #include "hw/core/qdev-clock.h"
 #include "hw/core/qdev-properties.h"

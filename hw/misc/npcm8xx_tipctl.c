@@ -9,7 +9,7 @@
 #include "qemu/osdep.h"
 
 #include "hw/misc/npcm8xx_tipctl.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"

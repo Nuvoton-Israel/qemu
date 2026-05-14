@@ -8,7 +8,7 @@
 #ifndef NPCM8XX_TIPCTL_H
 #define NPCM8XX_TIPCTL_H
 
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "qom/object.h"
 
 

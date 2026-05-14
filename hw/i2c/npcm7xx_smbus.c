@@ -24,7 +24,7 @@
 #include "qemu/module.h"
 #include "qemu/units.h"
 
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "trace.h"
 
 enum NPCM7xxSMBusCommonRegister {
