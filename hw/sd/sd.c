@@ -539,6 +539,19 @@ static void emmc_set_ext_csd(SDState *sd, uint64_t size)
     sd->ext_csd[EXT_CSD_REV] = 5;
     sd->ext_csd[EXT_CSD_RPMB_MULT] = sd->rpmb_part_size / (128 * KiB);
     sd->ext_csd[EXT_CSD_PARTITION_SUPPORT] = 0b111;
+    sd->ext_csd[EXT_CSD_PARTITION_SETTING_COMPLETED] = 0x01;
+    sd->ext_csd[EXT_CSD_PARTITION_ATTRIBUTE] = 0x01;
+
+    {
+        uint8_t wp_grp_size = sd->ext_csd[EXT_CSD_HC_WP_GRP_SIZE];
+        uint8_t erase_grp_size = sd->ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE];
+        int max_enh_size_mult = 0;
+
+        if (wp_grp_size != 0 && erase_grp_size != 0) {
+            max_enh_size_mult = sectcount / 1024 / (wp_grp_size * erase_grp_size);
+        }
+        st24_le_p(&sd->ext_csd[EXT_CSD_MAX_ENH_SIZE_MULT], max_enh_size_mult);
+    }
 
     /* Mode segment (RW) */
     sd->ext_csd[EXT_CSD_PART_CONFIG] = sd->boot_config;
