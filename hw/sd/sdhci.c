@@ -334,6 +334,19 @@ static void sdhci_data_transfer(void *opaque);
 
 #define BLOCK_SIZE_MASK (4 * KiB - 1)
 
+static void sdhci_before_transfer(SDHCIState *s)
+{
+    /* Automatically send CMD23 to set block count if AutoCMD23 enabled */
+    if (((s->trnmod & SDHC_TRNS_ACMD23) != 0) && s->blkcnt) {
+        SDRequest request;
+        uint8_t response[16];
+
+        request.cmd = 0x17;
+        request.arg = s->blkcnt;
+        sdbus_do_command(&s->sdbus, &request, response, sizeof(response));
+    }
+}
+
 static void sdhci_send_command(SDHCIState *s)
 {
     SDRequest request;
@@ -345,6 +358,8 @@ static void sdhci_send_command(SDHCIState *s)
     s->acmd12errsts = 0;
     request.cmd = s->cmdreg >> 8;
     request.arg = s->argument;
+
+    sdhci_before_transfer(s);
 
     trace_sdhci_send_command(request.cmd, request.arg);
     rlen = sdbus_do_command(&s->sdbus, &request, response, sizeof(response));
