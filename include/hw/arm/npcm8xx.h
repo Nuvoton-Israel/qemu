@@ -65,6 +65,9 @@ struct NPCM8xxMachine {
      */
     SplitIRQ            fan_splitter[NPCM8XX_NR_PWM_MODULES *
                                      NPCM7XX_PWM_PER_MODULE];
+
+    /* Use TYPE_EMMC (true, default) or TYPE_SD_CARD (false) */
+    bool                emmc;
 };
 
 

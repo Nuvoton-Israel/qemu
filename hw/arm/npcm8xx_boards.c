@@ -92,20 +92,39 @@ static void npcm8xx_connect_dram(NPCM8xxState *soc, MemoryRegion *dram)
                              &error_abort);
 }
 
-static void sdhci_attach_drive(SDHCIState *sdhci, int unit)
+static void sdhci_attach_drive(SDHCIState *sdhci, DriveInfo *dinfo, bool emmc)
 {
-    DriveInfo *di = drive_get(IF_SD, 0, unit);
-    BlockBackend *blk = di ? blk_by_legacy_dinfo(di) : NULL;
+    DeviceState *carddev;
+    BlockBackend *blk;
 
-    BusState *bus = qdev_get_child_bus(DEVICE(sdhci), "sd-bus");
-    if (bus == NULL) {
-        error_report("No SD bus found in SOC object");
-        exit(1);
+    if (!dinfo) {
+        return;
     }
 
-    DeviceState *carddev = qdev_new(TYPE_EMMC);
+    blk = blk_by_legacy_dinfo(dinfo);
+    carddev = qdev_new(emmc ? TYPE_EMMC : TYPE_SD_CARD);
     qdev_prop_set_drive_err(carddev, "drive", blk, &error_fatal);
-    qdev_realize_and_unref(carddev, bus, &error_fatal);
+    qdev_realize_and_unref(carddev,
+                           qdev_get_child_bus(DEVICE(sdhci), "sd-bus"),
+                           &error_fatal);
+}
+
+static bool npcm8xx_machine_get_emmc(Object *obj, Error **errp)
+{
+    NPCM8xxMachine *bmc = NPCM8XX_MACHINE(obj);
+    return bmc->emmc;
+}
+
+static void npcm8xx_machine_set_emmc(Object *obj, bool value, Error **errp)
+{
+    NPCM8xxMachine *bmc = NPCM8XX_MACHINE(obj);
+    bmc->emmc = value;
+}
+
+static void npcm8xx_machine_instance_init(Object *obj)
+{
+    NPCM8xxMachine *bmc = NPCM8XX_MACHINE(obj);
+    bmc->emmc = true;
 }
 
 static NPCM8xxState *npcm8xx_create_soc(MachineState *machine,
@@ -228,7 +247,8 @@ static void npcm845_evb_init(MachineState *machine)
     npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l1g45g", drive_get(IF_MTD, 0, 0));
     npcm845_evb_i2c_init(soc);
     npcm845_evb_fan_init(NPCM8XX_MACHINE(machine), soc);
-    sdhci_attach_drive(&soc->mmc.sdhci, 0);
+    sdhci_attach_drive(&soc->mmc.sdhci, drive_get(IF_SD, 0, 0),
+                       NPCM8XX_MACHINE(machine)->emmc);
     npcm8xx_load_kernel(machine, soc);
 }
 
@@ -254,6 +274,12 @@ static void npcm8xx_machine_class_init(ObjectClass *oc, const void *data)
     mc->no_parallel = 1;
     mc->default_ram_id = "ram";
     mc->valid_cpu_types = valid_cpu_types;
+
+    object_class_property_add_bool(oc, "emmc",
+                                   npcm8xx_machine_get_emmc,
+                                   npcm8xx_machine_set_emmc);
+    object_class_property_set_description(oc, "emmc",
+                                          "Use eMMC (true, default) or SD card (false)");
 }
 
 static void npcm845_evb_machine_class_init(ObjectClass *oc, const void *data)
@@ -273,6 +299,7 @@ static const TypeInfo npcm8xx_machine_types[] = {
         .name           = TYPE_NPCM8XX_MACHINE,
         .parent         = TYPE_MACHINE,
         .instance_size  = sizeof(NPCM8xxMachine),
+        .instance_init  = npcm8xx_machine_instance_init,
         .class_size     = sizeof(NPCM8xxMachineClass),
         .class_init     = npcm8xx_machine_class_init,
         .abstract       = true,
