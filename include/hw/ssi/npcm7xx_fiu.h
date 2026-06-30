@@ -35,7 +35,6 @@ typedef struct NPCM7xxFIUState NPCM7xxFIUState;
 typedef struct NPCM7xxFIUFlash {
     MemoryRegion direct_access;
     NPCM7xxFIUState *fiu;
-    uint8_t m_id;
 } NPCM7xxFIUFlash;
 
 /**
