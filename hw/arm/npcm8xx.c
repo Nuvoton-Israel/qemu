@@ -24,6 +24,7 @@
 #include "hw/intc/arm_gic.h"
 #include "hw/core/loader.h"
 #include "hw/misc/unimp.h"
+#include "hw/misc/npcm7xx_pci_mbox.h"
 #include "hw/core/qdev-clock.h"
 #include "hw/core/qdev-properties.h"
 #include "qapi/error.h"
@@ -537,6 +538,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+
     /* CPUs */
     for (i = 0; i < nc->num_cpus; i++) {
         /* WA: force set up all cpu clock */
@@ -888,13 +890,40 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.usbd[7]",      0xf0837000,   4 * KiB);
     create_unimplemented_device("npcm8xx.usbd[8]",      0xf0838000,   4 * KiB);
     create_unimplemented_device("npcm8xx.usbd[9]",      0xf0839000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.pci_mbox1",    0xf0848000,  64 * KiB);
+    /*
+     * PCI Mailbox 1 -- BIOS/FPGA <-> SMAD communication channel.
+     * ctrl regs @ 0xf084c000 (BMBXSTAT/CTL/CMD), RAM @ 0xf0848000.
+     * shm-path property is empty by default (anonymous RAM); set it at
+     * runtime via -global npcm7xx-pci-mbox.shm-path=/dev/shm/npcm_pci_mbox
+     * to share the RAM with a BIOS QEMU or FPGA simulation process.
+     */
+    {
+        DeviceState  *mbox1 = qdev_new(TYPE_NPCM7XX_PCI_MBOX);
+        SysBusDevice *mbox1_sbd = SYS_BUS_DEVICE(mbox1);
+        sysbus_realize_and_unref(mbox1_sbd, &error_fatal);
+        /* Region 0: control registers */
+        sysbus_mmio_map(mbox1_sbd, 0, 0xf084c000);
+        /* Region 1: dual-ported RAM */
+        sysbus_mmio_map(mbox1_sbd, 1, 0xf0848000);
+        /* IRQ: GIC SPI 105 */
+        sysbus_connect_irq(mbox1_sbd, 0,
+                           npcm8xx_irq(s, NPCM8XX_PCI_MBOX1_IRQ));
+    }
     create_unimplemented_device("npcm8xx.gdma0",        0xf0850000,   4 * KiB);
     create_unimplemented_device("npcm8xx.gdma1",        0xf0851000,   4 * KiB);
     create_unimplemented_device("npcm8xx.gdma2",        0xf0852000,   4 * KiB);
     create_unimplemented_device("npcm8xx.aes",          0xf0858000,   4 * KiB);
     create_unimplemented_device("npcm8xx.des",          0xf0859000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.pci_mbox2",    0xf0868000,  64 * KiB);
+    /* PCI Mailbox 2 -- ctrl regs @ 0xf086c000, RAM @ 0xf0868000, SPI 106 */
+    {
+        DeviceState  *mbox2 = qdev_new(TYPE_NPCM7XX_PCI_MBOX);
+        SysBusDevice *mbox2_sbd = SYS_BUS_DEVICE(mbox2);
+        sysbus_realize_and_unref(mbox2_sbd, &error_fatal);
+        sysbus_mmio_map(mbox2_sbd, 0, 0xf086c000);
+        sysbus_mmio_map(mbox2_sbd, 1, 0xf0868000);
+        sysbus_connect_irq(mbox2_sbd, 0,
+                           npcm8xx_irq(s, NPCM8XX_PCI_MBOX2_IRQ));
+    }
     create_unimplemented_device("npcm8xx.i3c0",         0xfff10000,   4 * KiB);
     create_unimplemented_device("npcm8xx.i3c1",         0xfff11000,   4 * KiB);
     create_unimplemented_device("npcm8xx.i3c2",         0xfff12000,   4 * KiB);
