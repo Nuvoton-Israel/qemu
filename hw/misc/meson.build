@@ -92,6 +92,10 @@ system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
   'npcm8xx_tipctl.c',
 ))
 
+system_ss.add(when: 'CONFIG_NPCM400_SOC', if_true: files(
+  'npcm400_pdma.c',
+))
+
 system_ss.add(when: 'CONFIG_OMAP', if_true: files(
   'omap_clk.c',
 ))

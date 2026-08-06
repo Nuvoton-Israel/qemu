@@ -51,6 +51,9 @@ config VIRTIO_SERIAL
 config MAX78000_UART
     bool
 
+config NPCM4XX_UART
+    bool
+
 config STM32F2XX_USART
     bool
 
