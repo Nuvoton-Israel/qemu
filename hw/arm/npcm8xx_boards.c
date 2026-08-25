@@ -26,12 +26,21 @@
 #include "hw/core/qdev-properties.h"
 #include "hw/nvram/eeprom_at24c.h"
 #include "qapi/error.h"
+#include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "qemu/datadir.h"
 #include "qemu/units.h"
 #include "system/block-backend.h"
 
 #define NPCM845_EVB_POWER_ON_STRAPS 0x000017ff
+
+/*
+ * Intel Birch Stream baseboards drive a 6-bit ID onto FM_BOARD_SKU_ID[0:5].
+ * Those land on SGPIO offsets 83..88, which is SIOX1 input pins 19..24 once
+ * firmware has configured the first 64 pins as outputs.
+ */
+#define NPCM845_DCSCM_BOARD_ID_SHIFT  19
+#define NPCM845_DCSCM_BOARD_ID_NBITS  6
 
 static const char npcm8xx_default_bootrom[] = "npcm8xx_bootrom.bin";
 
@@ -119,6 +128,34 @@ static void npcm8xx_machine_set_emmc(Object *obj, bool value, Error **errp)
 {
     NPCM8xxMachine *bmc = NPCM8XX_MACHINE(obj);
     bmc->emmc = value;
+}
+
+static void npcm8xx_machine_get_board_id(Object *obj, Visitor *v,
+                                         const char *name, void *opaque,
+                                         Error **errp)
+{
+    NPCM8xxMachine *bmc = NPCM8XX_MACHINE(obj);
+    uint32_t value = bmc->board_id;
+
+    visit_type_uint32(v, name, &value, errp);
+}
+
+static void npcm8xx_machine_set_board_id(Object *obj, Visitor *v,
+                                         const char *name, void *opaque,
+                                         Error **errp)
+{
+    NPCM8xxMachine *bmc = NPCM8XX_MACHINE(obj);
+    uint32_t value;
+
+    if (!visit_type_uint32(v, name, &value, errp)) {
+        return;
+    }
+    if (value >= BIT(NPCM845_DCSCM_BOARD_ID_NBITS)) {
+        error_setg(errp, "board-id must fit in %d bits",
+                   NPCM845_DCSCM_BOARD_ID_NBITS);
+        return;
+    }
+    bmc->board_id = value;
 }
 
 static void npcm8xx_machine_instance_init(Object *obj)
@@ -252,6 +289,31 @@ static void npcm845_evb_init(MachineState *machine)
     npcm8xx_load_kernel(machine, soc);
 }
 
+/*
+ * Nuvoton NPCM845 DC-SCM carrying an Intel Birch Stream baseboard. The SoC
+ * wiring matches the evaluation board; what differs is that the baseboard
+ * strap ID is visible on SIOX1, and firmware uses it to pick a device tree.
+ */
+static void npcm845_dcscm_init(MachineState *machine)
+{
+    NPCM8xxState *soc;
+
+    soc = npcm8xx_create_soc(machine, NPCM845_EVB_POWER_ON_STRAPS);
+    npcm8xx_connect_dram(soc, machine->ram);
+    object_property_set_uint(OBJECT(&soc->sgpio[0]), "pins-in-default",
+                             (uint64_t)NPCM8XX_MACHINE(machine)->board_id <<
+                             NPCM845_DCSCM_BOARD_ID_SHIFT, &error_abort);
+    qdev_realize(DEVICE(soc), NULL, &error_fatal);
+
+    npcm8xx_load_bootrom(machine, soc);
+    npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l1g45g", drive_get(IF_MTD, 0, 0));
+    npcm845_evb_i2c_init(soc);
+    npcm845_evb_fan_init(NPCM8XX_MACHINE(machine), soc);
+    sdhci_attach_drive(&soc->mmc.sdhci, drive_get(IF_SD, 0, 0),
+                       NPCM8XX_MACHINE(machine)->emmc);
+    npcm8xx_load_kernel(machine, soc);
+}
+
 static void npcm8xx_set_soc_type(NPCM8xxMachineClass *nmc, const char *type)
 {
     NPCM8xxClass *sc = NPCM8XX_CLASS(object_class_by_name(type));
@@ -294,6 +356,24 @@ static void npcm845_evb_machine_class_init(ObjectClass *oc, const void *data)
     mc->default_ram_size = 1 * GiB;
 };
 
+static void npcm845_dcscm_machine_class_init(ObjectClass *oc, const void *data)
+{
+    NPCM8xxMachineClass *nmc = NPCM8XX_MACHINE_CLASS(oc);
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    npcm8xx_set_soc_type(nmc, TYPE_NPCM8XX);
+
+    mc->desc = "Nuvoton NPCM845 Intel DC-SCM (Cortex-A35)";
+    mc->init = npcm845_dcscm_init;
+    mc->default_ram_size = 1 * GiB;
+
+    object_class_property_add(oc, "board-id", "uint32",
+                              npcm8xx_machine_get_board_id,
+                              npcm8xx_machine_set_board_id, NULL, NULL);
+    object_class_property_set_description(oc, "board-id",
+        "Baseboard ID driven onto FM_BOARD_SKU_ID[0:5] (6 bits, default 0)");
+};
+
 static const TypeInfo npcm8xx_machine_types[] = {
     {
         .name           = TYPE_NPCM8XX_MACHINE,
@@ -307,6 +387,11 @@ static const TypeInfo npcm8xx_machine_types[] = {
         .name           = MACHINE_TYPE_NAME("npcm845-evb"),
         .parent         = TYPE_NPCM8XX_MACHINE,
         .class_init     = npcm845_evb_machine_class_init,
+        .interfaces     = aarch64_machine_interfaces,
+    }, {
+        .name           = MACHINE_TYPE_NAME("npcm845-intel-DCSCM"),
+        .parent         = TYPE_NPCM8XX_MACHINE,
+        .class_init     = npcm845_dcscm_machine_class_init,
         .interfaces     = aarch64_machine_interfaces,
     },
 };
