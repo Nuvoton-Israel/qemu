@@ -178,6 +178,21 @@ static void npcm8xx_sgpio_update_pins_in(NPCM8xxSGPIOState *s, uint64_t value)
     npcm8xx_sgpio_update_event(s, diff);
 }
 
+/*
+ * Refresh XDIN from the current input levels. The number of input ports is
+ * only known once firmware has programmed IOXCFG2, so levels latched before
+ * that point would otherwise never make it into the data registers.
+ */
+static void npcm8xx_sgpio_sync_pins_in(NPCM8xxSGPIOState *s)
+{
+    uint8_t *p = (uint8_t *)&s->pin_in_level;
+    int i;
+
+    for (i = 0; i < npcm8xx_sgpio_get_in_port(s); ++i) {
+        s->regs[NPCM8XX_SGPIO_XDIN0 + i] = p[i];
+    }
+}
+
 static void npcm8xx_sgpio_update_pins_out(NPCM8xxSGPIOState *s, hwaddr reg)
 {
     uint8_t *p = (uint8_t *)&s->pin_out_level;
@@ -360,6 +375,7 @@ static void npcm8xx_sgpio_regs_write(void *opaque, hwaddr addr, uint64_t v,
     case NPCM8XX_SGPIO_IOXCFG2:
         if (~(s->regs[NPCM8XX_SGPIO_IOXCTS] & NPCM8XX_SGPIO_IOXCTS_IOXIF_EN)) {
             s->regs[reg] = value;
+            npcm8xx_sgpio_sync_pins_in(s);
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
                     "%s: trying to write to register @ 0x%"
@@ -406,7 +422,7 @@ static void npcm8xx_sgpio_hold_reset(Object *obj, ResetType type)
 {
     NPCM8xxSGPIOState *s = NPCM8XX_SGPIO(obj);
 
-    npcm8xx_sgpio_update_pins_in(s, 0);
+    npcm8xx_sgpio_update_pins_in(s, s->pin_in_default);
 }
 
 static void npcm8xx_sgpio_set_input_lo(void *opaque, int line, int level)
@@ -484,6 +500,11 @@ static const VMStateDescription vmstate_npcm8xx_sgpio = {
     },
 };
 
+static const Property npcm8xx_sgpio_properties[] = {
+    /* Bit n set => input pin n is driven high by the external shift register. */
+    DEFINE_PROP_UINT64("pins-in-default", NPCM8xxSGPIOState, pin_in_default, 0),
+};
+
 static void npcm8xx_sgpio_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *reset = RESETTABLE_CLASS(klass);
@@ -493,6 +514,7 @@ static void npcm8xx_sgpio_class_init(ObjectClass *klass, const void *data)
 
     dc->desc = "NPCM8xx SIOX Controller";
     dc->vmsd = &vmstate_npcm8xx_sgpio;
+    device_class_set_props(dc, npcm8xx_sgpio_properties);
     reset->phases.enter = npcm8xx_sgpio_enter_reset;
     reset->phases.hold = npcm8xx_sgpio_hold_reset;
 }
