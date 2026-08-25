@@ -68,6 +68,9 @@ struct NPCM8xxMachine {
 
     /* Use TYPE_EMMC (true, default) or TYPE_SD_CARD (false) */
     bool                emmc;
+
+    /* Baseboard ID driven onto the SIOX1 inputs, see "board-id". */
+    uint32_t            board_id;
 };
 
 
