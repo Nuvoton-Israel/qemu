@@ -26,6 +26,8 @@ typedef struct NPCM8xxSGPIOState {
     qemu_irq irq;
 
     uint64_t pin_in_level;
+    /* Input level applied on reset, i.e. what the external shift registers drive. */
+    uint64_t pin_in_default;
     uint64_t pin_out_level;
     uint8_t regs[NPCM8XX_SGPIO_NR_REGS];
 } NPCM8xxSGPIOState;
