@@ -485,6 +485,7 @@ config NPCM8XX
     select SERIAL_MM
     select SSI
     select UNIMP
+    select MAX31790
 
 
 config FSL_IMX25
