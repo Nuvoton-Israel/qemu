@@ -231,6 +231,14 @@ enum pmbus_registers {
 
 #define PMBUS_ERR_BYTE          0xFF
 
+/* QUERY response, as returned by the block write-block read process call */
+#define PB_QUERY_SUPPORTED         BIT(7)
+#define PB_QUERY_SUPPORTED_READ    BIT(5)
+#define PB_QUERY_SUPPORTED_WRITE   BIT(6)
+#define PB_QUERY_FORMAT_LINEAR     0x00
+#define PB_QUERY_FORMAT_DIRECT     0x0C
+#define PB_QUERY_FORMAT_VID        0x14
+
 #define TYPE_PMBUS_DEVICE "pmbus-device"
 OBJECT_DECLARE_TYPE(PMBusDevice, PMBusDeviceClass,
                     PMBUS_DEVICE)
@@ -368,8 +376,8 @@ typedef struct PMBusPage {
     uint8_t status_mfr_specific;       /* R/W byte */
     uint8_t status_fans_1_2;           /* R/W byte */
     uint8_t status_fans_3_4;           /* R/W byte */
-    uint8_t read_ein[5];               /* Read-Only block 5 bytes */
-    uint8_t read_eout[5];              /* Read-Only block 5 bytes */
+    uint8_t read_ein[6];               /* Read-Only block 6 bytes */
+    uint8_t read_eout[6];              /* Read-Only block 6 bytes */
     uint16_t read_vin;                 /* Read-Only word */
     uint16_t read_iin;                 /* Read-Only word */
     uint16_t read_vcap;                /* Read-Only word */
@@ -510,6 +518,12 @@ void pmbus_send64(PMBusDevice *state, uint64_t data);
  * Length is calculated using str_len()
  */
 void pmbus_send_string(PMBusDevice *state, const char *data);
+
+/**
+ * @brief Send a block over PMBus with the byte count prepended, as the
+ * block read protocol requires.
+ */
+void pmbus_send_block(PMBusDevice *state, const uint8_t *data, uint8_t len);
 
 /**
  * @brief Receive data sent with Block Write.

@@ -111,6 +111,17 @@ void pmbus_send_string(PMBusDevice *pmdev, const char *data)
     pmdev->out_buf_len += len + 1;
 }
 
+void pmbus_send_block(PMBusDevice *pmdev, const uint8_t *data, uint8_t len)
+{
+    g_assert(len + pmdev->out_buf_len < SMBUS_DATA_MAX_LEN);
+    pmdev->out_buf[len + pmdev->out_buf_len] = len;
+
+    for (int i = len - 1; i >= 0; i--) {
+        pmdev->out_buf[i + pmdev->out_buf_len] = data[len - 1 - i];
+    }
+    pmdev->out_buf_len += len + 1;
+}
+
 uint8_t pmbus_receive_block(PMBusDevice *pmdev, uint8_t *dest, size_t len)
 {
     /* dest may contain data from previous writes */
@@ -874,17 +885,17 @@ static uint8_t pmbus_receive_byte(SMBusDevice *smd)
         }
         break;
 
-    case PMBUS_READ_EIN:                  /* Read-Only block 5 bytes */
+    case PMBUS_READ_EIN:                  /* Read-Only block 6 bytes */
         if (pmdev->pages[index].page_flags & PB_HAS_EIN) {
-            pmbus_send(pmdev, pmdev->pages[index].read_ein, 5);
+            pmbus_send_block(pmdev, pmdev->pages[index].read_ein, 6);
         } else {
             goto passthough;
         }
         break;
 
-    case PMBUS_READ_EOUT:                 /* Read-Only block 5 bytes */
+    case PMBUS_READ_EOUT:                 /* Read-Only block 6 bytes */
         if (pmdev->pages[index].page_flags & PB_HAS_EOUT) {
-            pmbus_send(pmdev, pmdev->pages[index].read_eout, 5);
+            pmbus_send_block(pmdev, pmdev->pages[index].read_eout, 6);
         } else {
             goto passthough;
         }
@@ -1224,6 +1235,52 @@ static void pmbus_operation(PMBusDevice *pmdev)
     pmbus_check_limits(pmdev);
 }
 
+/*
+ * QUERY is a block write-block read process call: the master writes the
+ * command code it is asking about and reads back one byte describing whether
+ * that command exists and in which data format it reports. Answer from the
+ * page flags, which is the only record this device has of what it models.
+ */
+static void pmbus_query(PMBusDevice *pmdev, uint8_t index)
+{
+    uint64_t flags = pmdev->pages[index].page_flags;
+    uint8_t response = 0;
+    uint8_t cmd;
+
+    /*
+     * A master that stops a block read early leaves bytes behind, and the
+     * next read would then return them instead of this answer. QUERY is a
+     * self contained process call, so start from an empty buffer.
+     */
+    pmdev->out_buf_len = 0;
+
+    if (pmbus_receive_block(pmdev, &cmd, 1) != 1) {
+        pmbus_cml_error(pmdev);
+        return;
+    }
+
+    switch (cmd) {
+    case PMBUS_READ_EIN:
+        if (flags & PB_HAS_EIN) {
+            response = PB_QUERY_SUPPORTED | PB_QUERY_SUPPORTED_READ |
+                       PB_QUERY_FORMAT_DIRECT;
+        }
+        break;
+
+    case PMBUS_READ_EOUT:
+        if (flags & PB_HAS_EOUT) {
+            response = PB_QUERY_SUPPORTED | PB_QUERY_SUPPORTED_READ |
+                       PB_QUERY_FORMAT_DIRECT;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    pmbus_send_block(pmdev, &response, 1);
+}
+
 static int pmbus_write_data(SMBusDevice *smd, uint8_t *buf, uint8_t len)
 {
     PMBusDevice *pmdev = PMBUS_DEVICE(smd);
@@ -1280,6 +1337,10 @@ static int pmbus_write_data(SMBusDevice *smd, uint8_t *buf, uint8_t len)
     index = pmdev->page;
 
     switch (pmdev->code) {
+    case PMBUS_QUERY:                     /* Block Write-Block Read */
+        pmbus_query(pmdev, index);
+        break;
+
     case PMBUS_OPERATION:                 /* R/W byte */
         pmdev->pages[index].operation = pmbus_receive8(pmdev);
         pmbus_operation(pmdev);
