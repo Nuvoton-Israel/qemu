@@ -66,8 +66,15 @@ static void npcm8xx_load_bootrom(MachineState *machine, NPCM8xxState *soc)
     }
 }
 
+/*
+ * Pad the backing image out to @chip_size, which must be the capacity of the
+ * SPI part named by @flash_type. Note this is *not* fiu->flash_size: that is
+ * the size of the FIU address window, which on NPCM8xx is 128MiB regardless
+ * of how large the part actually wired up to the chip select is.
+ */
 static void npcm8xx_connect_flash(NPCM7xxFIUState *fiu, int cs_no,
-                                  const char *flash_type, DriveInfo *dinfo)
+                                  const char *flash_type, uint64_t chip_size,
+                                  DriveInfo *dinfo)
 {
     DeviceState *flash;
     qemu_irq flash_cs;
@@ -78,10 +85,10 @@ static void npcm8xx_connect_flash(NPCM7xxFIUState *fiu, int cs_no,
     if (dinfo) {
         blk = blk_by_legacy_dinfo(dinfo);
         blk_size = blk_getlength(blk);
-        if (blk_size < fiu->flash_size) {
+        if (blk_size < chip_size) {
             blk_get_perm(blk, &perm, &shared_perm);
             blk_set_perm(blk, BLK_PERM_ALL, BLK_PERM_ALL, &error_abort);
-            blk_truncate(blk, fiu->flash_size, true, PREALLOC_MODE_OFF,
+            blk_truncate(blk, chip_size, true, PREALLOC_MODE_OFF,
                          BDRV_REQ_ZERO_WRITE, &error_abort);
             blk_set_perm(blk, perm, shared_perm, &error_abort);
         }
@@ -281,7 +288,8 @@ static void npcm845_evb_init(MachineState *machine)
     qdev_realize(DEVICE(soc), NULL, &error_fatal);
 
     npcm8xx_load_bootrom(machine, soc);
-    npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l1g45g", drive_get(IF_MTD, 0, 0));
+    npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l1g45g", 128 * MiB,
+                          drive_get(IF_MTD, 0, 0));
     npcm845_evb_i2c_init(soc);
     npcm845_evb_fan_init(NPCM8XX_MACHINE(machine), soc);
     sdhci_attach_drive(&soc->mmc.sdhci, drive_get(IF_SD, 0, 0),
@@ -306,7 +314,8 @@ static void npcm845_dcscm_init(MachineState *machine)
     qdev_realize(DEVICE(soc), NULL, &error_fatal);
 
     npcm8xx_load_bootrom(machine, soc);
-    npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l51235f", drive_get(IF_MTD, 0, 0));
+    npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l51235f", 64 * MiB,
+                          drive_get(IF_MTD, 0, 0));
     npcm845_evb_i2c_init(soc);
     npcm845_evb_fan_init(NPCM8XX_MACHINE(machine), soc);
     sdhci_attach_drive(&soc->mmc.sdhci, drive_get(IF_SD, 0, 0),
