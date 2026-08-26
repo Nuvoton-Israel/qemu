@@ -10,6 +10,7 @@
 #include "qemu/osdep.h"
 #include "hw/i2c/pmbus_device.h"
 #include "hw/core/irq.h"
+#include "hw/core/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
@@ -61,6 +62,10 @@
 #define ADM1272_VOLT_DEFAULT            12000
 #define ADM1272_IOUT_DEFAULT            25000
 #define ADM1272_PWR_DEFAULT             300  /* 12V 25A */
+#define ADM1272_EIN_SAMPLES_DEFAULT     1000
+#define ADM1272_EIN_ACC_DEFAULT         (ADM1272_PWR_DEFAULT * \
+                                         ADM1272_EIN_SAMPLES_DEFAULT / 100)
+#define ADM1272_EOUT_ACC_DEFAULT        (ADM1272_EIN_ACC_DEFAULT * 9 / 10)
 #define ADM1272_SHUNT                   300 /* micro-ohms */
 #define ADM1272_VOLTAGE_COEFF_DEFAULT   1
 #define ADM1272_CURRENT_COEFF_DEFAULT   3
@@ -95,6 +100,7 @@ typedef struct ADM1272State {
 
     uint16_t strt_up_iout_lim;
 
+    uint8_t vout_mode;
 } ADM1272State;
 
 static const PMBusCoefficients adm1272_coefficients[] = {
@@ -185,6 +191,17 @@ static uint32_t adm1272_direct_to_watts(uint16_t value)
     return pmbus_direct_mode2data(c, value);
 }
 
+static void adm1272_set_energy(uint8_t *block, uint32_t accumulator,
+                               uint32_t samples)
+{
+    block[0] = accumulator & 0xFF;
+    block[1] = (accumulator >> 8) & 0xFF;
+    block[2] = 0;                         /* rollover count */
+    block[3] = samples & 0xFF;
+    block[4] = (samples >> 8) & 0xFF;
+    block[5] = (samples >> 16) & 0xFF;
+}
+
 static void adm1272_exit_reset(Object *obj, ResetType type)
 {
     ADM1272State *s = ADM1272(obj);
@@ -196,7 +213,7 @@ static void adm1272_exit_reset(Object *obj, ResetType type)
 
     pmdev->capability = ADM1272_CAPABILITY_NO_PEC;
     pmdev->pages[0].revision = ADM1272_PMBUS_REVISION_DEFAULT;
-    pmdev->pages[0].vout_mode = ADM1272_DIRECT_MODE;
+    pmdev->pages[0].vout_mode = s->vout_mode;
     pmdev->pages[0].vout_ov_warn_limit = ADM1272_HIGH_LIMIT_DEFAULT;
     pmdev->pages[0].vout_uv_warn_limit = 0;
     pmdev->pages[0].iout_oc_warn_limit = ADM1272_HIGH_LIMIT_DEFAULT;
@@ -226,6 +243,17 @@ static void adm1272_exit_reset(Object *obj, ResetType type)
     pmdev->pages[0].mfr_model = ADM1272_MODEL_DEFAULT;
     pmdev->pages[0].mfr_revision = ADM1272_MFR_DEFAULT_REVISION;
     pmdev->pages[0].mfr_date = ADM1272_DEFAULT_DATE;
+
+    /*
+     * READ_EIN and READ_EOUT return a six byte block: a 16 bit energy
+     * accumulator, an 8 bit rollover count and a 24 bit sample count, all
+     * little endian. Average power is the ratio of the accumulator delta to
+     * the sample delta, so seed both with values that give a sane quotient.
+     */
+    adm1272_set_energy(pmdev->pages[0].read_ein, ADM1272_EIN_ACC_DEFAULT,
+                       ADM1272_EIN_SAMPLES_DEFAULT);
+    adm1272_set_energy(pmdev->pages[0].read_eout, ADM1272_EOUT_ACC_DEFAULT,
+                       ADM1272_EIN_SAMPLES_DEFAULT);
 
     s->pin_ext = 0;
     s->ein_ext = 0;
@@ -489,7 +517,8 @@ static void adm1272_init(Object *obj)
 {
     PMBusDevice *pmdev = PMBUS_DEVICE(obj);
     uint64_t flags = PB_HAS_VOUT_MODE | PB_HAS_VOUT | PB_HAS_VIN | PB_HAS_IOUT |
-                     PB_HAS_PIN | PB_HAS_TEMPERATURE | PB_HAS_MFR_INFO;
+                     PB_HAS_PIN | PB_HAS_TEMPERATURE | PB_HAS_MFR_INFO |
+                     PB_HAS_EIN | PB_HAS_EOUT;
 
     pmbus_page_config(pmdev, 0, flags);
 
@@ -511,6 +540,17 @@ static void adm1272_init(Object *obj)
 
 }
 
+static const Property adm1272_properties[] = {
+    /*
+     * The real part reports direct data format. Linux pmbus_identify()
+     * aborts with -ENODEV on a direct mode chip, so the generic "pmbus"
+     * driver never binds and none of the sensors this model implements are
+     * reachable. Expose the reset value so a board can pick linear instead.
+     */
+    DEFINE_PROP_UINT8("vout-mode", ADM1272State, vout_mode,
+                      ADM1272_DIRECT_MODE),
+};
+
 static void adm1272_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -524,6 +564,7 @@ static void adm1272_class_init(ObjectClass *klass, const void *data)
     k->device_num_pages = 1;
 
     rc->phases.exit = adm1272_exit_reset;
+    device_class_set_props(dc, adm1272_properties);
 }
 
 static const TypeInfo adm1272_info = {

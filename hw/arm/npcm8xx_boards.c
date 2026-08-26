@@ -267,6 +267,7 @@ static void npcm845_evb_i2c_init(NPCM8xxState *soc)
 static void npcm845_dcscm_i2c_init(NPCM8xxState *soc)
 {
     DeviceState *fan;
+    DeviceState *hotswap;
 
     npcm845_evb_i2c_init(soc);
 
@@ -284,7 +285,10 @@ static void npcm845_dcscm_i2c_init(NPCM8xxState *soc)
                                 &error_fatal);
 
     /* PMBus hot-swap controller: has READ_EIN / READ_EOUT accumulators */
-    i2c_slave_create_simple(npcm8xx_i2c_get_bus(soc, 6), "adm1272", 0x10);
+    hotswap = DEVICE(i2c_slave_new("adm1272", 0x10));
+    qdev_prop_set_uint8(hotswap, "vout-mode", 0x17);
+    i2c_slave_realize_and_unref(I2C_SLAVE(hotswap),
+                                npcm8xx_i2c_get_bus(soc, 6), &error_fatal);
 
     /*
      * Baseboard fan controllers. SMBus 7 is the controller at f0087000,
