@@ -11,6 +11,7 @@
 #include "qemu/osdep.h"
 #include "hw/i2c/pmbus_device.h"
 #include "hw/core/irq.h"
+#include "hw/core/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
@@ -164,6 +165,7 @@ typedef struct MAX31785State {
     uint64_t mfr_date;
     uint64_t mfr_serial;
     uint16_t mfr_revision;
+    uint8_t  vout_mode;
 } MAX31785State;
 
 static uint8_t max31785_read_byte(PMBusDevice *pmdev)
@@ -452,7 +454,7 @@ static void max31785_exit_reset(Object *obj, ResetType type)
     pmdev->capability = MAX31785_DEFAULT_CAPABILITY;
 
     for (int i = MAX31785_MIN_FAN_PAGE; i <= MAX31785_MAX_FAN_PAGE; i++) {
-        pmdev->pages[i].vout_mode = MAX31785_DEFAULT_VOUT_MODE;
+        pmdev->pages[i].vout_mode = s->vout_mode;
         pmdev->pages[i].fan_command_1 = MAX31785_DEFAULT_FAN_COMMAND_1;
         pmdev->pages[i].revision = MAX31785_DEFAULT_PMBUS_REVISION;
         pmdev->pages[i].fan_config_1_2 = MAX31785_DEFAULT_FAN_CONFIG_1_2(0);
@@ -461,7 +463,7 @@ static void max31785_exit_reset(Object *obj, ResetType type)
     }
 
     for (int i = MAX31785_MIN_TEMP_PAGE; i <= MAX31785_MAX_TEMP_PAGE; i++) {
-        pmdev->pages[i].vout_mode = MAX31785_DEFAULT_VOUT_MODE;
+        pmdev->pages[i].vout_mode = s->vout_mode;
         pmdev->pages[i].revision = MAX31785_DEFAULT_PMBUS_REVISION;
         pmdev->pages[i].ot_fault_limit = MAX31785_DEFAULT_OT_FAULT_LIMIT;
         pmdev->pages[i].ot_warn_limit = MAX31785_DEFAULT_OT_WARN_LIMIT;
@@ -470,7 +472,7 @@ static void max31785_exit_reset(Object *obj, ResetType type)
     for (int i = MAX31785_MIN_ADC_VOLTAGE_PAGE;
          i <= MAX31785_MAX_ADC_VOLTAGE_PAGE;
          i++) {
-        pmdev->pages[i].vout_mode = MAX31785_DEFAULT_VOUT_MODE;
+        pmdev->pages[i].vout_mode = s->vout_mode;
         pmdev->pages[i].revision = MAX31785_DEFAULT_PMBUS_REVISION;
         pmdev->pages[i].vout_scale_monitor =
             MAX31785_DEFAULT_VOUT_SCALE_MONITOR;
@@ -544,6 +546,19 @@ static void max31785_init(Object *obj)
     }
 }
 
+static const Property max31785_properties[] = {
+    /*
+     * The real part reports VOUT_MODE 0x40, i.e. direct format. The Linux
+     * pmbus core refuses to probe a direct mode chip (see pmbus_identify(),
+     * it aborts with -ENODEV before pmbus_find_sensor_groups() runs), so the
+     * generic "pmbus" driver can never bind and the fan sensor group is never
+     * discovered. Expose the value as a property so a board or a test can
+     * instantiate the part in linear mode (0x17) and exercise those paths.
+     */
+    DEFINE_PROP_UINT8("vout-mode", MAX31785State, vout_mode,
+                      MAX31785_DEFAULT_VOUT_MODE),
+};
+
 static void max31785_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -555,6 +570,7 @@ static void max31785_class_init(ObjectClass *klass, const void *data)
     k->receive_byte = max31785_read_byte;
     k->device_num_pages = MAX31785_TOTAL_NUM_PAGES;
     rc->phases.exit = max31785_exit_reset;
+    device_class_set_props(dc, max31785_properties);
 }
 
 static const TypeInfo max31785_info = {
