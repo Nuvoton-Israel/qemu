@@ -255,6 +255,47 @@ static void npcm845_evb_i2c_init(NPCM8xxState *soc)
     at24c_eeprom_init(npcm8xx_i2c_get_bus(soc, 1), 0x50, 262144);
 }
 
+/*
+ * The DC-SCM baseboard carries PMBus parts that the EVB does not. None of the
+ * real Birch Stream regulators have a model here, but a couple of generic
+ * PMBus devices are enough to let the guest exercise the pmbus core paths
+ * (fan mode detection, fault/beep, QUERY, EIN/EOUT) which otherwise have no
+ * device to talk to. Instantiate them from the guest with, for example:
+ *
+ *   echo "pmbus 0x52" > /sys/bus/i2c/devices/i2c-6/new_device
+ */
+static void npcm845_dcscm_i2c_init(NPCM8xxState *soc)
+{
+    DeviceState *fan;
+
+    npcm845_evb_i2c_init(soc);
+
+    /*
+     * PMBus fan controller. This is the only PMBus model that implements
+     * FAN_CONFIG_1_2 / READ_FAN_SPEED_1, so it is what the generic Linux
+     * "pmbus" driver needs in order to reach pmbus_find_sensor_groups() and
+     * detect the fan control mode. Override VOUT_MODE to linear: the real
+     * part reports direct format, and pmbus_identify() aborts with -ENODEV
+     * on a direct mode chip before the fan detection code ever runs.
+     */
+    fan = DEVICE(i2c_slave_new("max31785", 0x52));
+    qdev_prop_set_uint8(fan, "vout-mode", 0x17);
+    i2c_slave_realize_and_unref(I2C_SLAVE(fan), npcm8xx_i2c_get_bus(soc, 6),
+                                &error_fatal);
+
+    /* PMBus hot-swap controller: has READ_EIN / READ_EOUT accumulators */
+    i2c_slave_create_simple(npcm8xx_i2c_get_bus(soc, 6), "adm1272", 0x10);
+
+    /*
+     * Baseboard fan controllers. SMBus 7 is the controller at f0087000,
+     * which the Birch Stream device tree exposes to Linux as i2c-6, so
+     * these land at the addresses the entity-manager fan configuration
+     * expects.
+     */
+    i2c_slave_create_simple(npcm8xx_i2c_get_bus(soc, 7), "max31790", 0x2c);
+    i2c_slave_create_simple(npcm8xx_i2c_get_bus(soc, 7), "max31790", 0x2f);
+}
+
 static void npcm845_evb_fan_init(NPCM8xxMachine *machine, NPCM8xxState *soc)
 {
     SplitIRQ *splitter = machine->fan_splitter;
@@ -316,7 +357,7 @@ static void npcm845_dcscm_init(MachineState *machine)
     npcm8xx_load_bootrom(machine, soc);
     npcm8xx_connect_flash(&soc->fiu[0], 0, "mx66l51235f", 64 * MiB,
                           drive_get(IF_MTD, 0, 0));
-    npcm845_evb_i2c_init(soc);
+    npcm845_dcscm_i2c_init(soc);
     npcm845_evb_fan_init(NPCM8XX_MACHINE(machine), soc);
     sdhci_attach_drive(&soc->mmc.sdhci, drive_get(IF_SD, 0, 0),
                        NPCM8XX_MACHINE(machine)->emmc);
