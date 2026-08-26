@@ -164,6 +164,13 @@ static uint8_t smbus_i2c_recv(I2CSlave *s)
 
     switch (dev->mode) {
     case SMBUS_READ_DATA:
+    /*
+     * A master doing a block read may NACK the length byte before clocking
+     * out the rest of the block, which lands us in SMBUS_DONE. Real devices
+     * keep shifting data out for as long as the master keeps clocking, so
+     * serve those reads instead of declaring the transfer broken.
+     */
+    case SMBUS_DONE:
         if (sc->receive_byte) {
             ret = sc->receive_byte(dev);
         }
