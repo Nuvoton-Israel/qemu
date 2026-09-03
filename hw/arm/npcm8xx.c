@@ -74,7 +74,19 @@
 /* Memory blocks at the end of the address space */
 #define NPCM8XX_RAM2_BA         0xfffb0000
 #define NPCM8XX_RAM2_SZ         (256 * KiB)
-#define NPCM8XX_ROM_BA          0xffff0100
+/*
+ * Internal Boot ROM.  Hardware base is 0xffff0000 (page-aligned).
+ * The old definition used 0xffff0100 to leave a 256-byte gap for
+ * "high-vectors", but that unaligned base caused a QEMU TCG TLB
+ * assertion failure (cputlb.c: "!(iotlb & ~TARGET_PAGE_MASK)") when
+ * CPU3's SMP spin-loop triggered an instruction fetch from 0xffffff0,
+ * which fell inside the ROM section at a non-page-aligned xlat offset.
+ * Aligning the ROM base to 0xffff0000 fixes the assertion and absorbs
+ * the former "npcm8xx.vect" unimplemented placeholder (first 256 bytes
+ * of the ROM, all zeros, are functionally identical to what the
+ * placeholder returned).
+ */
+#define NPCM8XX_ROM_BA          0xffff0000
 #define NPCM8XX_ROM_SZ          (64 * KiB)
 
 /* SDHCI Modules */
@@ -962,7 +974,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.spixcs0",      0xf8000000,  16 * MiB);
     create_unimplemented_device("npcm8xx.spixcs1",      0xf9000000,  16 * MiB);
     create_unimplemented_device("npcm8xx.spix",         0xfb001000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.vect",         0xffff0000,   256);
+    /* npcm8xx.vect (0xffff0000, 256 B) removed: now covered by irom above. */
 }
 
 static const Property npcm8xx_properties[] = {
