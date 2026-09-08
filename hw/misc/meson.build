@@ -90,6 +90,7 @@ if config_all_devices.has_key('CONFIG_NPCM7XX') and not get_option('nettle').ena
 endif
 
 system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
+  'npcm8xx_shm.c',
   'npcm8xx_tipctl.c',
 ))
 
