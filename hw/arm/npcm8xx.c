@@ -57,9 +57,17 @@
 /* ADC Module */
 #define NPCM8XX_ADC_BA          0xf000c000
 
-/* Internal AHB SRAM */
+/*
+ * Internal AHB SRAM (RAM3).
+ *
+ * 16 KiB rather than the 4 KiB the reference DTS reserves: the Intel DC-SCM
+ * board reserves the whole 16 KiB for MMBI (two channels, 4 KiB + 12 KiB),
+ * and the driver memset_io()s the entire reserved region at probe time.  A
+ * smaller region would leave 0xc0009000-0xc000bfff unassigned and abort the
+ * guest with a synchronous external abort.
+ */
 #define NPCM8XX_RAM3_BA         0xc0008000
-#define NPCM8XX_RAM3_SZ         (4 * KiB)
+#define NPCM8XX_RAM3_SZ         (16 * KiB)
 
 /* Memory blocks at the end of the address space */
 #define NPCM8XX_RAM2_BA         0xfffb0000
