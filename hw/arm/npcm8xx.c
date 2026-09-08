@@ -25,6 +25,7 @@
 #include "hw/core/loader.h"
 #include "hw/misc/unimp.h"
 #include "hw/misc/npcm7xx_pci_mbox.h"
+#include "hw/misc/npcm8xx_shm.h"
 #include "hw/core/qdev-clock.h"
 #include "hw/core/qdev-properties.h"
 #include "qapi/error.h"
@@ -99,6 +100,7 @@ enum NPCM8xxInterrupt {
     NPCM8XX_ADC_IRQ             = 0,
     NPCM8XX_PECI_IRQ            = 6,
     NPCM8XX_KCS_HIB_IRQ         = 9,
+    NPCM8XX_SHM_IRQ             = 11,
     NPCM8XX_GMAC1_IRQ           = 14,
     NPCM8XX_GMAC2_IRQ,
     NPCM8XX_GMAC3_IRQ,
@@ -858,7 +860,17 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     sysbus_realize(SYS_BUS_DEVICE(&s->sha), &error_abort);
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->sha), 0, NPCM8XX_SHA_BA);
 
-    create_unimplemented_device("npcm8xx.shm",          0xc0001000,   4 * KiB);
+    /*
+     * Shared Memory (SHM) module -- window setup and host-access interrupt
+     * for the MMBI buffers in RAM3.  GIC SPI 11.
+     */
+    {
+        DeviceState  *shm = qdev_new(TYPE_NPCM8XX_SHM);
+        SysBusDevice *shm_sbd = SYS_BUS_DEVICE(shm);
+        sysbus_realize_and_unref(shm_sbd, &error_fatal);
+        sysbus_mmio_map(shm_sbd, 0, 0xc0001000);
+        sysbus_connect_irq(shm_sbd, 0, npcm8xx_irq(s, NPCM8XX_SHM_IRQ));
+    }
     create_unimplemented_device("npcm8xx.gicextra",     0xdfffa000,  24 * KiB);
     create_unimplemented_device("npcm8xx.vdmx",         0xe0800000,   4 * KiB);
     create_unimplemented_device("npcm8xx.pcierc",       0xe1000000,  64 * KiB);
