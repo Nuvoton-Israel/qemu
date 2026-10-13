@@ -92,6 +92,7 @@ endif
 system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
   'npcm8xx_aes.c',
   'npcm8xx_gdma.c',
+  'npcm8xx_vcd.c',
   'npcm8xx_shm.c',
   'npcm8xx_tipctl.c',
 ))
