@@ -175,6 +175,9 @@ struct SDState {
     uint32_t vhs;
     bool wp_switch;
     unsigned long *wp_group_bmap;
+    /* eMMC only: protection type of the groups set in wp_group_bmap */
+    unsigned long *wp_pwr_bmap;
+    unsigned long *wp_perm_bmap;
     int32_t wp_group_bits;
     uint64_t size;
     uint32_t blk_len;
@@ -523,7 +526,9 @@ static void emmc_set_ext_csd(SDState *sd, uint64_t size)
     sd->ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] = 0x01; /* HC Erase unit size */
     sd->ext_csd[EXT_CSD_ERASE_TIMEOUT_MULT] = 0x01; /* HC erase timeout */
     sd->ext_csd[EXT_CSD_REL_WR_SEC_C] = 0x1; /* Reliable write sector count */
-    sd->ext_csd[EXT_CSD_HC_WP_GRP_SIZE] = 0x01; /* HC write protect group size */
+    /* 4 x 512 KiB erase unit = the 2 MiB write protect group tracked below */
+    /* HC write protect group size */
+    sd->ext_csd[EXT_CSD_HC_WP_GRP_SIZE] = 0x04;
     sd->ext_csd[EXT_CSD_S_C_VCC] = 0x01; /* Sleep current VCC  */
     sd->ext_csd[EXT_CSD_S_C_VCCQ] = 0x01; /* Sleep current VCCQ */
     sd->ext_csd[EXT_CSD_S_A_TIMEOUT] = 0x01; /* Sleep/Awake timeout */
@@ -956,9 +961,13 @@ static void sd_reset(DeviceState *dev)
     sd_set_sdstatus(sd);
 
     g_free(sd->wp_group_bmap);
+    g_free(sd->wp_pwr_bmap);
+    g_free(sd->wp_perm_bmap);
     sd->wp_switch = sd->blk ? !blk_is_writable(sd->blk) : false;
     sd->wp_group_bits = sect;
     sd->wp_group_bmap = bitmap_new(sd->wp_group_bits);
+    sd->wp_pwr_bmap = bitmap_new(sd->wp_group_bits);
+    sd->wp_perm_bmap = bitmap_new(sd->wp_group_bits);
     memset(sd->function_group, 0, sizeof(sd->function_group));
     sd->erase_start = INVALID_ADDRESS;
     sd->erase_end = INVALID_ADDRESS;
@@ -1085,6 +1094,18 @@ static int sd_vmstate_pre_load(void *opaque)
     return 0;
 }
 
+static const VMStateDescription emmc_wp_vmstate = {
+    .name = "sd-card/emmc-wp",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_needed_for_emmc,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BITMAP(wp_pwr_bmap, SDState, 0, wp_group_bits),
+        VMSTATE_BITMAP(wp_perm_bmap, SDState, 0, wp_group_bits),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription sd_vmstate = {
     .name = "sd-card",
     .version_id = 2,
@@ -1121,6 +1142,7 @@ static const VMStateDescription sd_vmstate = {
         &sd_ocr_vmstate,
         &emmc_extcsd_vmstate,
         &emmc_rpmb_vmstate,
+        &emmc_wp_vmstate,
         NULL
     },
 };
@@ -2072,12 +2094,36 @@ static sd_rsp_type_t sd_cmd_PROGRAM_CSD(SDState *sd, SDRequest req)
     return sd_cmd_to_receivingdata(sd, req, 0, sizeof(sd->csd));
 }
 
+#define EMMC_USER_WP_PWR_EN     BIT(0)
+#define EMMC_USER_WP_PERM_EN    BIT(2)
+
+enum {
+    EMMC_WP_NONE = 0,
+    EMMC_WP_TEMP = 1,
+    EMMC_WP_PWRON = 2,
+    EMMC_WP_PERM = 3,
+};
+
+static uint8_t emmc_wp_type(SDState *sd, uint64_t wpnum)
+{
+    if (!test_bit(wpnum, sd->wp_group_bmap)) {
+        return EMMC_WP_NONE;
+    }
+    if (test_bit(wpnum, sd->wp_perm_bmap)) {
+        return EMMC_WP_PERM;
+    }
+    if (test_bit(wpnum, sd->wp_pwr_bmap)) {
+        return EMMC_WP_PWRON;
+    }
+    return EMMC_WP_TEMP;
+}
+
 static sd_rsp_type_t sd_cmd_SET_CLR_WRITE_PROT(SDState *sd, SDRequest req,
                                                bool is_write)
 {
-    uint64_t addr;
+    uint64_t addr, wpnum;
 
-    if (sd->size > SDSC_MAX_CAPACITY) {
+    if (sd->size > SDSC_MAX_CAPACITY && !sd_is_emmc(sd)) {
         return sd_illegal;
     }
 
@@ -2092,10 +2138,27 @@ static sd_rsp_type_t sd_cmd_SET_CLR_WRITE_PROT(SDState *sd, SDRequest req,
     }
 
     sd->state = sd_programming_state;
+    wpnum = sd_addr_to_wpnum(addr);
     if (is_write) {
-        set_bit(sd_addr_to_wpnum(addr), sd->wp_group_bmap);
-    } else {
-        clear_bit(sd_addr_to_wpnum(addr), sd->wp_group_bmap);
+        set_bit(wpnum, sd->wp_group_bmap);
+        if (sd_is_emmc(sd)) {
+            /* The type follows USER_WP at the time of the command. */
+            uint8_t user_wp = sd->ext_csd[EXT_CSD_USER_WP];
+
+            if (user_wp & EMMC_USER_WP_PERM_EN) {
+                set_bit(wpnum, sd->wp_perm_bmap);
+            } else {
+                clear_bit(wpnum, sd->wp_perm_bmap);
+            }
+            if (user_wp & EMMC_USER_WP_PWR_EN) {
+                set_bit(wpnum, sd->wp_pwr_bmap);
+            } else {
+                clear_bit(wpnum, sd->wp_pwr_bmap);
+            }
+        }
+    } else if (!sd_is_emmc(sd) || emmc_wp_type(sd, wpnum) <= EMMC_WP_TEMP) {
+        /* Power-on and permanent protection cannot be cleared by CMD29. */
+        clear_bit(wpnum, sd->wp_group_bmap);
     }
     /* Bzzzzzzztt .... Operation complete.  */
     sd->state = sd_transfer_state;
@@ -2120,7 +2183,7 @@ static sd_rsp_type_t sd_cmd_SEND_WRITE_PROT(SDState *sd, SDRequest req)
     uint64_t addr;
     uint32_t data;
 
-    if (sd->size > SDSC_MAX_CAPACITY) {
+    if (sd->size > SDSC_MAX_CAPACITY && !sd_is_emmc(sd)) {
         return sd_illegal;
     }
 
@@ -2133,7 +2196,37 @@ static sd_rsp_type_t sd_cmd_SEND_WRITE_PROT(SDState *sd, SDRequest req)
         return sd_r1;
     }
 
-    data = sd_wpbits(sd, req.arg);
+    data = sd_wpbits(sd, addr);
+    return sd_cmd_to_sendingdata(sd, req, addr, &data, sizeof(data));
+}
+
+/* CMD31 (eMMC): 2 bits of protection type for each of 32 groups */
+static sd_rsp_type_t emmc_cmd_SEND_WRITE_PROT_TYPE(SDState *sd, SDRequest req)
+{
+    uint64_t addr, wp = 0, data;
+    uint64_t wpnum;
+    unsigned i;
+
+    if (sd->state != sd_transfer_state) {
+        return sd_invalid_state_for_cmd(sd, req);
+    }
+
+    addr = sd_req_get_address(sd, req);
+    if (!address_in_range(sd, "SEND_WRITE_PROT_TYPE", addr, sd->blk_len)) {
+        return sd_r1;
+    }
+
+    wpnum = sd_addr_to_wpnum(addr);
+    for (i = 0; i < 32; i++, wpnum++) {
+        if ((wpnum << (HWBLOCK_SHIFT + SECTOR_SHIFT + WPGROUP_SHIFT)) >=
+            sd->size) {
+            /* Groups past the end of the device read as unprotected. */
+            break;
+        }
+        wp |= (uint64_t)emmc_wp_type(sd, wpnum) << (2 * i);
+    }
+
+    stq_be_p(&data, wp);
     return sd_cmd_to_sendingdata(sd, req, addr, &data, sizeof(data));
 }
 
@@ -2367,9 +2460,9 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         sd->multi_blk_cnt = 0;
     }
 
-    if (sd->proto->cmd[req.cmd].class == 6 && FIELD_EX32(sd->ocr, OCR,
-                                                         CARD_CAPACITY)) {
-        /* Only Standard Capacity cards support class 6 commands */
+    if (sd->proto->cmd[req.cmd].class == 6 && !sd_is_emmc(sd) &&
+        FIELD_EX32(sd->ocr, OCR, CARD_CAPACITY)) {
+        /* Only Standard Capacity SD cards support class 6 commands */
         return sd_illegal;
     }
 
@@ -2825,6 +2918,7 @@ static uint8_t sd_read_byte(SDState *sd)
     case 19: /* CMD19:  SEND_TUNING_BLOCK (SD) */
     case 22: /* ACMD22: SEND_NUM_WR_BLOCKS */
     case 30: /* CMD30:  SEND_WRITE_PROT */
+    case 31: /* CMD31:  SEND_WRITE_PROT_TYPE (eMMC) */
     case 51: /* ACMD51: SEND_SCR */
     case 56: /* CMD56:  GEN_CMD */
         sd_generic_read_byte(sd, &ret);
@@ -3018,7 +3112,8 @@ static const SDProto sd_proto_emmc = {
         [28] = {6,  sd_ac,   "SET_WRITE_PROT", sd_cmd_SET_WRITE_PROT},
         [29] = {6,  sd_ac,   "CLR_WRITE_PROT", sd_cmd_CLR_WRITE_PROT},
         [30] = {6,  sd_adtc, "SEND_WRITE_PROT", sd_cmd_SEND_WRITE_PROT},
-        [31] = {6,  sd_adtc, "SEND_WRITE_PROT_TYPE", sd_cmd_unimplemented},
+        [31] = {6,  sd_adtc, "SEND_WRITE_PROT_TYPE",
+                emmc_cmd_SEND_WRITE_PROT_TYPE},
         [35] = {5,  sd_ac,   "ERASE_WR_BLK_START", sd_cmd_ERASE_WR_BLK_START},
         [36] = {5,  sd_ac,   "ERASE_WR_BLK_END", sd_cmd_ERASE_WR_BLK_END},
         [38] = {5,  sd_ac,   "ERASE", sd_cmd_ERASE},
