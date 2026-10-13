@@ -93,6 +93,7 @@ endif
 system_ss.add(when: 'CONFIG_NPCM7XX', if_true: [files('npcm_sha.c'), nettle_for_npcm])
 
 system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
+  'npcm8xx_aes.c',
   'npcm_kcs.c',
   'npcm8xx_shm.c',
   'npcm8xx_tipctl.c',
