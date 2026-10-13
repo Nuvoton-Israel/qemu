@@ -44,6 +44,8 @@ typedef struct NPCM7xxGPIOState {
     uint32_t pin_level;
     uint32_t ext_level;
     uint32_t ext_driven;
+    /* Pins last reported as undefined (-1) on the output lines. */
+    uint32_t pin_undefined;
 
     uint32_t regs[NPCM7XX_GPIO_NR_REGS];
 } NPCM7xxGPIOState;

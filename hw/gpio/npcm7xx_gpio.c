@@ -126,6 +126,13 @@ static void npcm7xx_gpio_update_pins(NPCM7xxGPIOState *s, uint32_t diff)
     /* If any pins changed state, update the outgoing GPIOs. */
     pin_diff ^= s->pin_level;
     pin_diff |= undefined & diff;
+    /*
+     * An undefined pin is held as 0 in pin_level, so a floating pin that is
+     * then driven low (open-drain released, then pulled down) must be caught
+     * by its change of definedness, not of level.
+     */
+    pin_diff |= undefined ^ s->pin_undefined;
+    s->pin_undefined = undefined;
     if (pin_diff) {
         int i;
 
@@ -374,12 +381,13 @@ static void npcm7xx_gpio_init(Object *obj)
 
 static const VMStateDescription vmstate_npcm7xx_gpio = {
     .name = "npcm7xx-gpio",
-    .version_id = 0,
+    .version_id = 1,
     .minimum_version_id = 0,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(pin_level, NPCM7xxGPIOState),
         VMSTATE_UINT32(ext_level, NPCM7xxGPIOState),
         VMSTATE_UINT32(ext_driven, NPCM7xxGPIOState),
+        VMSTATE_UINT32_V(pin_undefined, NPCM7xxGPIOState, 1),
         VMSTATE_UINT32_ARRAY(regs, NPCM7xxGPIOState, NPCM7XX_GPIO_NR_REGS),
         VMSTATE_END_OF_LIST(),
     },
