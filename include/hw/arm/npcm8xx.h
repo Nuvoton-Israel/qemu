@@ -25,6 +25,9 @@
 #include "hw/mem/npcm_mc.h"
 #include "hw/misc/npcm_clk.h"
 #include "hw/misc/npcm_gcr.h"
+#include "hw/misc/npcm8xx_aes.h"
+#include "hw/misc/npcm8xx_gdma.h"
+#include "hw/misc/npcm8xx_vcd.h"
 #include "hw/misc/npcm_kcs.h"
 #include "hw/misc/npcm8xx_tipctl.h"
 #include "hw/misc/npcm7xx_mft.h"
@@ -72,6 +75,9 @@ struct NPCM8xxMachine {
 
     /* Baseboard ID driven onto the SIOX1 inputs, see "board-id". */
     uint32_t            board_id;
+
+    /* Platform USB topology description, see "usb-topology". */
+    char                *usb_topology;
 };
 
 
@@ -115,6 +121,9 @@ struct NPCM8xxState {
     NPCMPCSState        pcs;
     NPCM7xxSDHCIState   mmc;
     NPCM8XXPSPIState    pspi;
+    Npcm8xxAesState     aes;
+    Npcm8xxGdmaState    gdma[3];
+    Npcm8xxVcdState     vcd;
     NPCM8xxTIPCTLState     tipctl;
     NPCM8xxSHAState     sha;
     NPCM8xxSGPIOState   sgpio[2];
