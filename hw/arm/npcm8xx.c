@@ -108,6 +108,7 @@ enum NPCM8xxInterrupt {
     NPCM8XX_ESPI_IRQ,
     NPCM8XX_SIOX0_IRQ,
     NPCM8XX_SIOX1_IRQ,
+    NPCM8XX_VCD_IRQ             = 22,
     NPCM8XX_MC_IRQ              = 25,
     NPCM8XX_MMC_IRQ,
     NPCM8XX_PSPI_IRQ            = 28,
@@ -481,6 +482,12 @@ static void npcm8xx_init(Object *obj)
     object_initialize_child(obj, "mc", &s->mc, TYPE_NPCM8XX_MC);
     object_initialize_child(obj, "rng", &s->rng, TYPE_NPCM7XX_RNG);
     object_initialize_child(obj, "adc", &s->adc, TYPE_NPCM7XX_ADC);
+    object_initialize_child(obj, "aes", &s->aes, TYPE_NPCM8XX_AES);
+    object_initialize_child(obj, "vcd", &s->vcd, TYPE_NPCM8XX_VCD);
+    for (i = 0; i < ARRAY_SIZE(s->gdma); i++) {
+        object_initialize_child(obj, "gdma[*]", &s->gdma[i],
+                                TYPE_NPCM8XX_GDMA);
+    }
     object_initialize_child(obj, "tipctl", &s->tipctl, TYPE_NPCM8XX_TIPCTL);
 
     for (i = 0; i < ARRAY_SIZE(s->tim); i++) {
@@ -635,6 +642,23 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     sysbus_realize(SYS_BUS_DEVICE(&s->mc), &error_abort);
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->mc), 0, NPCM8XX_MC_BA);
 
+
+    /* AES crypto accelerator. */
+    sysbus_realize(SYS_BUS_DEVICE(&s->aes), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->aes), 0, 0xf0858000);
+
+    /* GDMA: the AES driver moves its data through GDMA1 (0xf0851000). */
+    for (i = 0; i < ARRAY_SIZE(s->gdma); i++) {
+        sysbus_realize(SYS_BUS_DEVICE(&s->gdma[i]), &error_abort);
+        sysbus_mmio_map(SYS_BUS_DEVICE(&s->gdma[i]), 0,
+                        0xf0850000 + i * 0x1000);
+    }
+
+    /* Video Capture and Differentiation. */
+    sysbus_realize(SYS_BUS_DEVICE(&s->vcd), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->vcd), 0, 0xf0810000);
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->vcd), 0,
+                       npcm8xx_irq(s, NPCM8XX_VCD_IRQ));
 
     /* TIPCTL Cannot fail. */
     sysbus_realize(SYS_BUS_DEVICE(&s->tipctl), &error_abort);
@@ -897,7 +921,6 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.copctl",       0xf080c000,   4 * KiB);
     create_unimplemented_device("npcm8xx.tipctl",       0xf080d000,   4 * KiB);
     create_unimplemented_device("npcm8xx.rst",          0xf080e000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.vcd",          0xf0810000,  64 * KiB);
     create_unimplemented_device("npcm8xx.ece",          0xf0820000,   8 * KiB);
     create_unimplemented_device("npcm8xx.vdma",         0xf0822000,   8 * KiB);
     create_unimplemented_device("npcm8xx.usbd[0]",      0xf0830000,   4 * KiB);
@@ -929,10 +952,8 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
         sysbus_connect_irq(mbox1_sbd, 0,
                            npcm8xx_irq(s, NPCM8XX_PCI_MBOX1_IRQ));
     }
-    create_unimplemented_device("npcm8xx.gdma0",        0xf0850000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.gdma1",        0xf0851000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.gdma2",        0xf0852000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.aes",          0xf0858000,   4 * KiB);
+    /* npcm8xx.gdma[0-2] — real devices wired above via s->gdma */
+    /* npcm8xx.aes — real device wired above via s->aes */
     create_unimplemented_device("npcm8xx.des",          0xf0859000,   4 * KiB);
     /* PCI Mailbox 2 -- ctrl regs @ 0xf086c000, RAM @ 0xf0868000, SPI 106 */
     {
