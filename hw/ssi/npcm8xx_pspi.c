@@ -66,15 +66,14 @@ static uint16_t npcm_pspi_read_data(NPCM8XXPSPIState *s)
 
 static void npcm_pspi_write_data(NPCM8XXPSPIState *s, uint16_t data)
 {
-    uint16_t data_l, data_h = 0;
+    uint16_t value = 0;
 
+    /* DATA holds what the peripheral shifted back, not what was sent. */
     if (FIELD_EX16(s->regs[R_PSPI_CTL1], PSPI_CTL1, MOD)) {
-        data_h = (extract16(data, 8, 8) << 8);
-        ssi_transfer(s->spi, data_h);
+        value = ssi_transfer(s->spi, extract16(data, 8, 8)) << 8;
     }
-    data_l = extract16(data, 0, 8);
-    ssi_transfer(s->spi, data_l);
-    s->regs[R_PSPI_DATA] = (data_h | data_l);
+    value |= ssi_transfer(s->spi, extract16(data, 0, 8));
+    s->regs[R_PSPI_DATA] = value;
 
     /* Mark data as available */
     s->regs[R_PSPI_STAT] = R_PSPI_STAT_BSY_MASK | R_PSPI_STAT_RBF_MASK;
