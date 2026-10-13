@@ -52,6 +52,7 @@ struct USBHubState {
 };
 
 #define TYPE_USB_HUB "usb-hub"
+#define TYPE_USB_HUB_HS "usb-hub-hs"
 OBJECT_DECLARE_SIMPLE_TYPE(USBHubState, USB_HUB)
 
 #define ClearHubFeature         (0x2000 | USB_REQ_CLEAR_FEATURE)
@@ -153,6 +154,56 @@ static const USBDesc desc_hub = {
     .str  = desc_strings,
 };
 
+/*
+ * High-speed variant (usb-hub-hs): same hub, but only for high-speed
+ * downstream devices, so it needs no transaction translator.  The interrupt
+ * endpoint interval is an exponent here (2^(n-1) micro-frames).
+ */
+static const USBDescIface desc_iface_hub_hs = {
+    .bInterfaceNumber              = 0,
+    .bNumEndpoints                 = 1,
+    .bInterfaceClass               = USB_CLASS_HUB,
+    .eps = (USBDescEndpoint[]) {
+        {
+            .bEndpointAddress      = USB_DIR_IN | 0x01,
+            .bmAttributes          = USB_ENDPOINT_XFER_INT,
+            .wMaxPacketSize        = 1 + DIV_ROUND_UP(MAX_PORTS, 8),
+            .bInterval             = 0x0c,
+        },
+    }
+};
+
+static const USBDescDevice desc_device_hub_hs = {
+    .bcdUSB                        = 0x0200,
+    .bDeviceClass                  = USB_CLASS_HUB,
+    .bMaxPacketSize0               = 64,
+    .bNumConfigurations            = 1,
+    .confs = (USBDescConfig[]) {
+        {
+            .bNumInterfaces        = 1,
+            .bConfigurationValue   = 1,
+            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_SELFPOWER |
+                                     USB_CFG_ATT_WAKEUP,
+            .nif = 1,
+            .ifs = &desc_iface_hub_hs,
+        },
+    },
+};
+
+static const USBDesc desc_hub_hs = {
+    .id = {
+        .idVendor          = 0x0409,
+        .idProduct         = 0x55aa,
+        .bcdDevice         = 0x0101,
+        .iManufacturer     = STR_MANUFACTURER,
+        .iProduct          = STR_PRODUCT,
+        .iSerialNumber     = STR_SERIALNUMBER,
+    },
+    .full = &desc_device_hub,
+    .high = &desc_device_hub_hs,
+    .str  = desc_strings,
+};
+
 static const uint8_t qemu_hub_hub_descriptor[] =
 {
         0x00,                   /*  u8  bLength; patched in later */
@@ -205,6 +256,11 @@ static bool usb_hub_port_update(USBHubPort *port)
             usb_hub_port_set(port, PORT_STAT_LOW_SPEED);
         } else {
             usb_hub_port_clear(port, PORT_STAT_LOW_SPEED);
+        }
+        if (port->port.dev->speed == USB_SPEED_HIGH) {
+            usb_hub_port_set(port, PORT_STAT_HIGH_SPEED);
+        } else {
+            usb_hub_port_clear(port, PORT_STAT_HIGH_SPEED);
         }
     }
     return notify;
@@ -592,6 +648,7 @@ static void usb_hub_realize(USBDevice *dev, Error **errp)
 {
     USBHubState *s = USB_HUB(dev);
     USBHubPort *port;
+    uint32_t speedmask = USB_SPEED_MASK_LOW | USB_SPEED_MASK_FULL;
     int i;
 
     if (s->num_ports < 1 || s->num_ports > MAX_PORTS) {
@@ -610,11 +667,13 @@ static void usb_hub_realize(USBDevice *dev, Error **errp)
     s->port_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
                                  usb_hub_port_update_timer, s);
     s->intr = usb_ep_get(dev, USB_TOKEN_IN, 1);
+    if (USB_DEVICE_GET_CLASS(dev)->usb_desc->high) {
+        speedmask |= USB_SPEED_MASK_HIGH;
+    }
     for (i = 0; i < s->num_ports; i++) {
         port = &s->ports[i];
         usb_register_port(usb_bus_from_device(dev),
-                          &port->port, s, i, &usb_hub_port_ops,
-                          USB_SPEED_MASK_LOW | USB_SPEED_MASK_FULL);
+                          &port->port, s, i, &usb_hub_port_ops, speedmask);
         usb_port_location(&port->port, dev->port, i+1);
     }
     usb_hub_handle_reset(dev);
@@ -696,9 +755,26 @@ static const TypeInfo hub_info = {
     .class_init    = usb_hub_class_initfn,
 };
 
+static void usb_hub_hs_class_initfn(ObjectClass *klass, const void *data)
+{
+    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
+
+    /* usb_hub_class_initfn() has already run for the parent type */
+    uc->product_desc   = "QEMU USB High-Speed Hub";
+    uc->usb_desc       = &desc_hub_hs;
+    uc->handle_attach  = usb_desc_attach;
+}
+
+static const TypeInfo hub_hs_info = {
+    .name          = TYPE_USB_HUB_HS,
+    .parent        = TYPE_USB_HUB,
+    .class_init    = usb_hub_hs_class_initfn,
+};
+
 static void usb_hub_register_types(void)
 {
     type_register_static(&hub_info);
+    type_register_static(&hub_hs_info);
 }
 
 type_init(usb_hub_register_types)
