@@ -91,6 +91,7 @@ Board-specific documentation
    arm/musicpal
    arm/kzm
    arm/nrf
+   arm/npcm-kcs-brief
    arm/nuvoton
    arm/imx25-pdk
    arm/mcimx6ul-evk
