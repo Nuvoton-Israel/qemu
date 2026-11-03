@@ -184,6 +184,15 @@ enum NPCM7xxSMBusBank1Register {
 #define NPCM7XX_SMB_RXF_STS_INIT_VAL 0x00
 #define NPCM7XX_SMB_RXF_CTL_INIT_VAL 0x01
 
+#define TYPE_NPCM7XX_SMBUS_SLAVE "npcm7xx-smbus-slave"
+
+OBJECT_DECLARE_SIMPLE_TYPE(NPCM7xxSMBusI2CSlave,
+                           NPCM7XX_SMBUS_SLAVE)
+
+typedef struct NPCM7xxSMBusI2CSlave {
+    I2CSlave parent_obj;
+} NPCM7xxSMBusI2CSlave;
+
 static uint8_t npcm7xx_smbus_get_version(void)
 {
     return NPCM7XX_SMBUS_VERSION_FIFO_SUPPORTED << 7 |
@@ -192,7 +201,7 @@ static uint8_t npcm7xx_smbus_get_version(void)
 
 static void npcm7xx_smbus_update_irq(NPCM8xxSMBusState *s)
 {
-    int level;
+    int level = 0;
 
     if (s->ctl1 & NPCM7XX_SMBCTL1_INTEN) {
         level = !!((s->ctl1 & NPCM7XX_SMBCTL1_NMINTE &&
@@ -201,7 +210,7 @@ static void npcm7xx_smbus_update_irq(NPCM8xxSMBusState *s)
                    (s->st & NPCM7XX_SMBST_NEGACK) ||
                    (s->st & NPCM7XX_SMBST_SDAST) ||
                    (s->ctl1 & NPCM7XX_SMBCTL1_STASTRE &&
-                    s->st & NPCM7XX_SMBST_SDAST) ||
+                    s->st & NPCM7XX_SMBST_STASTR) ||
                    (s->ctl1 & NPCM7XX_SMBCTL1_EOBINTE &&
                     s->cst3 & NPCM7XX_SMBCST3_EO_BUSY) ||
                    (s->rxf_ctl & NPCM7XX_SMBRXF_CTL_THR_RXIE &&
@@ -210,14 +219,14 @@ static void npcm7xx_smbus_update_irq(NPCM8xxSMBusState *s)
                     s->txf_sts & NPCM7XX_SMBTXF_STS_TX_THST) ||
                    (s->fif_cts & NPCM7XX_SMBFIF_CTS_RFTE_IE &&
                     s->fif_cts & NPCM7XX_SMBFIF_CTS_RXF_TXE));
-
-        if (level) {
-            s->cst2 |= NPCM7XX_SMBCST2_INTSTS;
-        } else {
-            s->cst2 &= ~NPCM7XX_SMBCST2_INTSTS;
-        }
-        qemu_set_irq(s->irq, level);
     }
+
+    if (level) {
+        s->cst2 |= NPCM7XX_SMBCST2_INTSTS;
+    } else {
+        s->cst2 &= ~NPCM7XX_SMBCST2_INTSTS;
+    }
+    qemu_set_irq(s->irq, level);
 }
 
 static void npcm7xx_smbus_nack(NPCM8xxSMBusState *s)
@@ -260,10 +269,10 @@ static void npcm7xx_smbus_recv_byte(NPCM8xxSMBusState *s)
 {
     s->sda = i2c_recv(s->bus);
     s->st |= NPCM7XX_SMBST_SDAST;
-    if (s->st & NPCM7XX_SMBCTL1_ACK) {
+    if (s->ctl1 & NPCM7XX_SMBCTL1_ACK) {
         trace_npcm7xx_smbus_nack(DEVICE(s)->canonical_path);
         i2c_nack(s->bus);
-        s->st &= NPCM7XX_SMBCTL1_ACK;
+        s->ctl1 &= ~NPCM7XX_SMBCTL1_ACK;
     }
     trace_npcm7xx_smbus_recv_byte((DEVICE(s)->canonical_path), s->sda);
     npcm7xx_smbus_update_irq(s);
@@ -362,27 +371,52 @@ static void npcm7xx_smbus_send_address(NPCM8xxSMBusState *s, uint8_t value)
 {
     int recv;
     int rv;
+    uint8_t addr;
 
     recv = value & BIT(0);
-    rv = i2c_start_transfer(s->bus, value >> 1, recv);
+    addr = value >> 1;
+
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "SMBUS START: addr=0x%02x recv=%d raw=0x%02x\n",
+                  addr, recv, value);
+
+    rv = i2c_start_transfer(s->bus, addr, recv);
+
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "SMBUS START RESULT: addr=0x%02x recv=%d rv=%d\n",
+                  addr, recv, rv);
+
     trace_npcm7xx_smbus_send_address(DEVICE(s)->canonical_path,
-                                     value >> 1, recv, !rv);
+                                     addr, recv, !rv);
+
     if (rv) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: requesting i2c bus for 0x%02x failed: %d\n",
-                      DEVICE(s)->canonical_path, value, rv);
-        /* Failed to start transfer. NACK to reject.*/
+                      "%s: requesting i2c bus for raw=0x%02x "
+                      "(addr=0x%02x recv=%d) failed: %d\n",
+                      DEVICE(s)->canonical_path,
+                      value,
+                      addr,
+                      recv,
+                      rv);
+
+        /* Failed to start transfer. NACK to reject. */
         if (recv) {
             s->st &= ~NPCM7XX_SMBST_XMIT;
         } else {
             s->st |= NPCM7XX_SMBST_XMIT;
         }
+
         npcm7xx_smbus_nack(s);
         npcm7xx_smbus_update_irq(s);
         return;
     }
 
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "SMBUS START SUCCESS: addr=0x%02x recv=%d\n",
+                  addr, recv);
+
     s->st &= ~NPCM7XX_SMBST_NEGACK;
+
     if (recv) {
         s->status = NPCM7XX_SMBUS_STATUS_RECEIVING;
         s->st &= ~NPCM7XX_SMBST_XMIT;
@@ -393,11 +427,13 @@ static void npcm7xx_smbus_send_address(NPCM8xxSMBusState *s, uint8_t value)
 
     if (s->ctl1 & NPCM7XX_SMBCTL1_STASTRE) {
         s->st |= NPCM7XX_SMBST_STASTR;
+
         if (!recv) {
             s->st |= NPCM7XX_SMBST_SDAST;
         }
     } else if (recv) {
         s->st |= NPCM7XX_SMBST_SDAST;
+
         if (NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
             npcm7xx_smbus_recv_fifo(s);
         } else {
@@ -407,6 +443,7 @@ static void npcm7xx_smbus_send_address(NPCM8xxSMBusState *s, uint8_t value)
         s->st |= NPCM7XX_SMBST_SDAST;
         s->fif_cts |= NPCM7XX_SMBFIF_CTS_RXF_TXE;
     }
+
     npcm7xx_smbus_update_irq(s);
 }
 
@@ -467,11 +504,27 @@ static uint8_t npcm7xx_smbus_read_sda(NPCM8xxSMBusState *s)
         break;
 
     case NPCM7XX_SMBUS_STATUS_RECEIVING:
-        if (NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
+        if (!(s->st & NPCM7XX_SMBST_MODE)) {
+            /*
+             * Slave receiver: the external master already supplied the byte
+             * through npcm7xx_smbus_slave_send().  A guest read consumes it.
+             */
+            if (NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
+                if (NPCM7XX_SMBRXF_STS_RX_BYTES(s->rxf_sts) != 0) {
+                    npcm7xx_smbus_read_byte_fifo(s);
+                    value = s->sda;
+                }
+            } else {
+                value = s->sda;
+                s->st &= ~NPCM7XX_SMBST_SDAST;
+                npcm7xx_smbus_update_irq(s);
+            }
+        } else if (NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
             npcm7xx_smbus_read_byte_fifo(s);
             value = s->sda;
         } else {
             npcm7xx_smbus_recv_byte(s);
+            value = s->sda;
         }
         break;
 
@@ -486,6 +539,18 @@ static uint8_t npcm7xx_smbus_read_sda(NPCM8xxSMBusState *s)
 static void npcm7xx_smbus_write_sda(NPCM8xxSMBusState *s, uint8_t value)
 {
     s->sda = value;
+
+    if (!(s->st & NPCM7XX_SMBST_MODE) &&
+        s->status == NPCM7XX_SMBUS_STATUS_SENDING) {
+        /*
+         * Slave transmitter byte mode: guest software has supplied the next
+         * byte.  Clear SDAST until the external master consumes that byte.
+         */
+        s->st &= ~NPCM7XX_SMBST_SDAST;
+        npcm7xx_smbus_update_irq(s);
+        return;
+    }
+
     if (s->st & NPCM7XX_SMBST_MODE) {
         switch (s->status) {
         case NPCM7XX_SMBUS_STATUS_IDLE:
@@ -815,6 +880,7 @@ static void npcm7xx_smbus_write(void *opaque, hwaddr offset, uint64_t value,
 
     trace_npcm7xx_smbus_write(DEVICE(s)->canonical_path, offset, value, size);
 
+
     /* The order of the registers are their order in memory. */
     switch (offset) {
     case NPCM7XX_SMB_SDA:
@@ -980,7 +1046,6 @@ static const MemoryRegionOps npcm7xx_smbus_ops = {
         .unaligned = false,
     },
 };
-
 static void npcm7xx_smbus_enter_reset(Object *obj, ResetType type)
 {
     NPCM8xxSMBusState *s = NPCM8XX_SMBUS(obj);
@@ -998,6 +1063,8 @@ static void npcm7xx_smbus_enter_reset(Object *obj, ResetType type)
     for (int i = 0; i < NPCM7XX_SMBUS_NR_ADDRS; ++i) {
         s->addr[i] = NPCM7XX_SMB_ADDR_INIT_VAL;
     }
+
+
     s->scllt = NPCM7XX_SMB_SCLLT_INIT_VAL;
     s->sclht = NPCM7XX_SMB_SCLHT_INIT_VAL;
 
@@ -1028,11 +1095,246 @@ static void npcm7xx_smbus_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
     sysbus_init_irq(sbd, &s->irq);
+
     memory_region_init_io(&s->iomem, obj, &npcm7xx_smbus_ops, s,
                           "regs", 4 * KiB);
     sysbus_init_mmio(sbd, &s->iomem);
 
     s->bus = i2c_init_bus(DEVICE(s), "i2c-bus");
+
+    i2c_slave_create_simple(s->bus,
+                            TYPE_NPCM7XX_SMBUS_SLAVE,
+                            0x7f);
+							
+}
+
+
+static bool npcm7xx_smbus_slave_address_enabled(NPCM8xxSMBusState *s,
+                                                uint8_t address)
+{
+    int i;
+
+    for (i = 0; i < NPCM7XX_SMBUS_NR_ADDRS; i++) {
+        if ((s->addr[i] & NPCM7XX_ADDR_EN) &&
+            NPCM7XX_ADDR_A(s->addr[i]) == address) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool npcm7xx_smbus_slave_address_matches(NPCM8xxSMBusState *s,
+                                                uint8_t address)
+{
+    if (address == 0) {
+        return !!(s->ctl1 & NPCM7XX_SMBCTL1_GCMEN);
+    }
+
+    return npcm7xx_smbus_slave_address_enabled(s, address);
+}
+
+static bool npcm7xx_smbus_slave_match_and_add(I2CSlave *candidate,
+                                              uint8_t address,
+                                              bool broadcast,
+                                              I2CNodeList *current_devs)
+{
+    BusState *bus = qdev_get_parent_bus(DEVICE(candidate));
+    NPCM8xxSMBusState *s = NPCM8XX_SMBUS(bus->parent);
+    bool match;
+
+    if (broadcast) {
+        match = !!(s->ctl1 & NPCM7XX_SMBCTL1_GCMEN);
+    } else {
+        match = npcm7xx_smbus_slave_address_enabled(s, address);
+    }
+
+    if (match) {
+        I2CNode *node = g_new(struct I2CNode, 1);
+
+        candidate->address = address;
+        node->elt = candidate;
+        QLIST_INSERT_HEAD(current_devs, node, next);
+    }
+
+    return match;
+}
+
+static void npcm7xx_smbus_slave_begin(NPCM8xxSMBusState *s,
+                                      uint8_t address, bool transmitting)
+{
+    s->st &= ~(NPCM7XX_SMBST_MODE | NPCM7XX_SMBST_NEGACK |
+               NPCM7XX_SMBST_NMATCH | NPCM7XX_SMBST_STP);
+
+    if (transmitting) {
+        s->st |= NPCM7XX_SMBST_XMIT;
+        s->status = NPCM7XX_SMBUS_STATUS_SENDING;
+    } else {
+        s->st &= ~NPCM7XX_SMBST_XMIT;
+        s->status = NPCM7XX_SMBUS_STATUS_RECEIVING;
+    }
+
+    s->st |= NPCM7XX_SMBST_SDAST;
+    s->cst |= NPCM7XX_SMBCST_BUSY | NPCM7XX_SMBCST_BB;
+
+    if (address == 0) {
+        s->cst |= NPCM7XX_SMBCST_GCMATCH;
+        s->cst &= ~NPCM7XX_SMBCST_MATCH;
+    } else {
+        s->cst |= NPCM7XX_SMBCST_MATCH;
+        s->cst &= ~NPCM7XX_SMBCST_GCMATCH;
+    }
+
+    if (!transmitting) {
+        npcm7xx_smbus_clear_buffer(s);
+        s->rx_cur = 0;
+    }
+
+    npcm7xx_smbus_update_irq(s);
+}
+
+static void npcm7xx_smbus_slave_finish(NPCM8xxSMBusState *s)
+{
+    s->st |= NPCM7XX_SMBST_STP;
+    s->cst &= ~NPCM7XX_SMBCST_BUSY;
+    s->cst3 |= NPCM7XX_SMBCST3_EO_BUSY;
+    s->status = NPCM7XX_SMBUS_STATUS_IDLE;
+    npcm7xx_smbus_update_irq(s);
+}
+
+static int npcm7xx_smbus_slave_event(I2CSlave *slave,
+                                     enum i2c_event event)
+{
+    BusState *bus = qdev_get_parent_bus(DEVICE(slave));
+    NPCM8xxSMBusState *s = NPCM8XX_SMBUS(bus->parent);
+
+    switch (event) {
+    case I2C_START_SEND:
+    case I2C_START_SEND_ASYNC:
+        if (!NPCM7XX_SMBUS_ENABLED(s)) {
+            return -1;
+        }
+
+        if (!npcm7xx_smbus_slave_address_matches(s, slave->address)) {
+            s->st |= NPCM7XX_SMBST_NMATCH;
+            s->cst &= ~(NPCM7XX_SMBCST_MATCH | NPCM7XX_SMBCST_GCMATCH);
+            npcm7xx_smbus_update_irq(s);
+            return -1;
+        }
+
+        npcm7xx_smbus_slave_begin(s, slave->address, false);
+        return 0;
+
+    case I2C_START_RECV:
+        if (!NPCM7XX_SMBUS_ENABLED(s) || slave->address == 0) {
+            return -1;
+        }
+
+        if (!npcm7xx_smbus_slave_address_enabled(s, slave->address)) {
+            s->st |= NPCM7XX_SMBST_NMATCH;
+            s->cst &= ~NPCM7XX_SMBCST_MATCH;
+            npcm7xx_smbus_update_irq(s);
+            return -1;
+        }
+
+        /*
+         * The existing model has no TX FIFO storage.  Support the byte-mode
+         * slave-transmit path through SDA: guest software writes the byte to
+         * SDA and the external master consumes it via slave_recv().
+         */
+        npcm7xx_smbus_slave_begin(s, slave->address, true);
+        return 0;
+
+    case I2C_FINISH:
+        if (s->status == NPCM7XX_SMBUS_STATUS_RECEIVING ||
+            s->status == NPCM7XX_SMBUS_STATUS_SENDING) {
+            npcm7xx_smbus_slave_finish(s);
+        }
+        return 0;
+
+    case I2C_NACK:
+        /* External master terminated a slave-read transaction. */
+        if (s->status == NPCM7XX_SMBUS_STATUS_SENDING) {
+            s->st |= NPCM7XX_SMBST_NEGACK;
+            s->st &= ~NPCM7XX_SMBST_SDAST;
+            npcm7xx_smbus_update_irq(s);
+        }
+        return 0;
+
+    default:
+        return -1;
+    }
+}
+
+static int npcm7xx_smbus_slave_send(I2CSlave *slave, uint8_t data)
+{
+    BusState *bus = qdev_get_parent_bus(DEVICE(slave));
+    NPCM8xxSMBusState *s = NPCM8XX_SMBUS(bus->parent);
+
+    if (s->status != NPCM7XX_SMBUS_STATUS_RECEIVING) {
+        return -1;
+    }
+
+    if (!NPCM7XX_SMBUS_FIFO_ENABLED(s)) {
+        /* Byte mode: expose the byte in SDA and signal SDAST. */
+        s->sda = data;
+        s->st |= NPCM7XX_SMBST_SDAST;
+        trace_npcm7xx_smbus_recv_byte(DEVICE(s)->canonical_path, data);
+        npcm7xx_smbus_update_irq(s);
+        return 0;
+    }
+
+    {
+        uint8_t received_bytes = NPCM7XX_SMBRXF_STS_RX_BYTES(s->rxf_sts);
+        uint8_t pos;
+
+        if (received_bytes >= s->fifo_size) {
+            s->fif_cts |= NPCM7XX_SMBFIF_CTS_RXF_TXE;
+            s->st |= NPCM7XX_SMBST_SDAST;
+            npcm7xx_smbus_update_irq(s);
+            return -1;
+        }
+
+        pos = (s->rx_cur + received_bytes) % s->fifo_size;
+        s->rx_fifo[pos] = data;
+        received_bytes++;
+        s->rxf_sts = received_bytes;
+
+        trace_npcm7xx_smbus_recv_byte(DEVICE(s)->canonical_path, data);
+
+        if (received_bytes == NPCM7XX_SMBRXF_CTL_RX_THR(s->rxf_ctl)) {
+            s->rxf_sts |= NPCM7XX_SMBRXF_STS_RX_THST;
+            s->st |= NPCM7XX_SMBST_SDAST;
+        }
+
+        if (received_bytes == s->fifo_size) {
+            s->fif_cts |= NPCM7XX_SMBFIF_CTS_RXF_TXE;
+            s->st |= NPCM7XX_SMBST_SDAST;
+        }
+    }
+
+    npcm7xx_smbus_update_irq(s);
+    return 0;
+}
+
+static uint8_t npcm7xx_smbus_slave_recv(I2CSlave *slave)
+{
+    BusState *bus = qdev_get_parent_bus(DEVICE(slave));
+    NPCM8xxSMBusState *s = NPCM8XX_SMBUS(bus->parent);
+    uint8_t data = s->sda;
+
+    if (s->status != NPCM7XX_SMBUS_STATUS_SENDING) {
+        return 0xff;
+    }
+
+    /*
+     * Byte-mode transmit handshake: the byte currently in SDA is consumed,
+     * then SDAST is asserted so guest software can provide the next byte.
+     */
+    s->st |= NPCM7XX_SMBST_SDAST;
+    npcm7xx_smbus_update_irq(s);
+
+    return data;
 }
 
 static const VMStateDescription vmstate_npcm7xx_smbus = {
@@ -1075,6 +1377,21 @@ static const Property npcm8xx_smbus_properties[] = {
     DEFINE_PROP_UINT8("last-bit", NPCM8xxSMBusState, last_bit, BIT(7)),
 };
 
+static void npcm7xx_smbus_slave_class_init(ObjectClass *klass,
+                                           const void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
+
+    dc->desc = "NPCM8xx SMBus internal slave endpoint";
+    dc->user_creatable = false;
+
+    sc->event = npcm7xx_smbus_slave_event;
+    sc->send = npcm7xx_smbus_slave_send;
+    sc->recv = npcm7xx_smbus_slave_recv;
+    sc->match_and_add = npcm7xx_smbus_slave_match_and_add;
+}
+
 static void npcm7xx_smbus_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -1095,5 +1412,12 @@ static const TypeInfo npcm7xx_smbus_types[] = {
         .class_init = npcm7xx_smbus_class_init,
         .instance_init = npcm7xx_smbus_init,
     },
+    {
+        .name = TYPE_NPCM7XX_SMBUS_SLAVE,
+        .parent = TYPE_I2C_SLAVE,
+        .instance_size = sizeof(NPCM7xxSMBusI2CSlave),
+        .class_init = npcm7xx_smbus_slave_class_init,
+    },
 };
+
 DEFINE_TYPES(npcm7xx_smbus_types);
