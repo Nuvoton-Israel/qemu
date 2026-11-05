@@ -28,6 +28,7 @@
 #include "hw/misc/npcm8xx_aes.h"
 #include "hw/misc/npcm8xx_gdma.h"
 #include "hw/misc/npcm8xx_vcd.h"
+#include "hw/misc/npcm_kcs.h"
 #include "hw/misc/npcm8xx_tipctl.h"
 #include "hw/misc/npcm7xx_mft.h"
 #include "hw/misc/npcm7xx_pwm.h"
@@ -103,6 +104,7 @@ struct NPCM8xxState {
 
     NPCMGCRState        gcr;
     NPCMCLKState        clk;
+    NPCMKCSState        kcs;
     NPCM7xxTimerCtrlState tim[3];
     NPCM7xxADCState     adc;
     NPCM7xxPWMState     pwm[NPCM8XX_NR_PWM_MODULES];

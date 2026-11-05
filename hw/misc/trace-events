@@ -144,6 +144,14 @@ npcm_clk_write(uint64_t offset, uint32_t value) "offset: 0x%04" PRIx64 " value: 
 npcm_gcr_read(uint64_t offset, uint64_t value) " offset: 0x%04" PRIx64 " value: 0x%08" PRIx64
 npcm_gcr_write(uint64_t offset, uint64_t value) "offset: 0x%04" PRIx64 " value: 0x%08" PRIx64
 
+# npcm_kcs.c
+npcm_kcs_read(unsigned channel, unsigned reg, uint8_t value) "channel: %u reg: 0x%02x value: 0x%02x"
+npcm_kcs_write(unsigned channel, unsigned reg, uint64_t value) "channel: %u reg: 0x%02x value: 0x%02" PRIx64
+npcm_kcs_irq(int level) "level: %d"
+npcm_kcs_input_accepted(unsigned channel, uint8_t value, uint8_t command) "channel: %u value: 0x%02x command: %u"
+npcm_kcs_doorbell_in(uint8_t events) "events: 0x%02x"
+npcm_kcs_doorbell_out_failed(int err) "sendto failed: errno %d"
+
 # npcm7xx_mft.c
 npcm7xx_mft_read(const char *name, uint64_t offset, uint16_t value) "%s: offset: 0x%04" PRIx64 " value: 0x%04" PRIx16
 npcm7xx_mft_write(const char *name, uint64_t offset, uint16_t value) "%s: offset: 0x%04" PRIx64 " value: 0x%04" PRIx16

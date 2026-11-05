@@ -82,17 +82,21 @@ system_ss.add(when: 'CONFIG_NPCM7XX', if_true: files(
   'npcm7xx_pci_mbox.c',
   'npcm7xx_pwm.c',
   'npcm7xx_rng.c',
-  'npcm_sha.c',
 ))
 
-if config_all_devices.has_key('CONFIG_NPCM7XX') and not get_option('nettle').enabled()
+# npcm_sha.c uses nettle directly; find it independently of the top-level
+# nettle variable (which is not_found when gnutls is the primary crypto backend).
+nettle_for_npcm = nettle.found() ? nettle : cc.find_library('nettle', required: false)
+if config_all_devices.has_key('CONFIG_NPCM7XX') and not nettle_for_npcm.found()
   error('We need package nettle to support NPCM SHA')
 endif
+system_ss.add(when: 'CONFIG_NPCM7XX', if_true: [files('npcm_sha.c'), nettle_for_npcm])
 
 system_ss.add(when: 'CONFIG_NPCM8XX', if_true: files(
   'npcm8xx_aes.c',
   'npcm8xx_gdma.c',
   'npcm8xx_vcd.c',
+  'npcm_kcs.c',
   'npcm8xx_shm.c',
   'npcm8xx_tipctl.c',
 ))

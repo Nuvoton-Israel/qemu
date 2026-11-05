@@ -52,6 +52,7 @@
 #define NPCM8XX_CLK_BA          0xf0801000
 #define NPCM8XX_MC_BA           0xf0824000
 #define NPCM8XX_RNG_BA          0xf000b000
+#define NPCM8XX_KCS_BA          0xf0007000
 #define NPCM8XX_TIPCTL_BA       0xf080d000
 #define NPCM8XX_SHA_BA          (0xf085a000)
 
@@ -73,7 +74,19 @@
 /* Memory blocks at the end of the address space */
 #define NPCM8XX_RAM2_BA         0xfffb0000
 #define NPCM8XX_RAM2_SZ         (256 * KiB)
-#define NPCM8XX_ROM_BA          0xffff0100
+/*
+ * Internal Boot ROM.  Hardware base is 0xffff0000 (page-aligned).
+ * The old definition used 0xffff0100 to leave a 256-byte gap for
+ * "high-vectors", but that unaligned base caused a QEMU TCG TLB
+ * assertion failure (cputlb.c: "!(iotlb & ~TARGET_PAGE_MASK)") when
+ * CPU3's SMP spin-loop triggered an instruction fetch from 0xffffff0,
+ * which fell inside the ROM section at a non-page-aligned xlat offset.
+ * Aligning the ROM base to 0xffff0000 fixes the assertion and absorbs
+ * the former "npcm8xx.vect" unimplemented placeholder (first 256 bytes
+ * of the ROM, all zeros, are functionally identical to what the
+ * placeholder returned).
+ */
+#define NPCM8XX_ROM_BA          0xffff0000
 #define NPCM8XX_ROM_SZ          (64 * KiB)
 
 /* SDHCI Modules */
@@ -481,6 +494,7 @@ static void npcm8xx_init(Object *obj)
                             TYPE_NPCM7XX_FUSE_ARRAY);
     object_initialize_child(obj, "mc", &s->mc, TYPE_NPCM8XX_MC);
     object_initialize_child(obj, "rng", &s->rng, TYPE_NPCM7XX_RNG);
+    object_initialize_child(obj, "kcs", &s->kcs, TYPE_NPCM_KCS);
     object_initialize_child(obj, "adc", &s->adc, TYPE_NPCM7XX_ADC);
     object_initialize_child(obj, "aes", &s->aes, TYPE_NPCM8XX_AES);
     object_initialize_child(obj, "vcd", &s->vcd, TYPE_NPCM8XX_VCD);
@@ -884,6 +898,14 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     sysbus_realize(SYS_BUS_DEVICE(&s->sha), &error_abort);
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->sha), 0, NPCM8XX_SHA_BA);
 
+    /* KCS */
+    qdev_connect_clock_in(DEVICE(&s->kcs), "clock",
+                         qdev_get_clock_out(DEVICE(&s->clk), "apb1-clock"));
+    sysbus_realize(SYS_BUS_DEVICE(&s->kcs), &error_abort);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->kcs), 0, NPCM8XX_KCS_BA);
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->kcs), 0,
+                       npcm8xx_irq(s, NPCM8XX_KCS_HIB_IRQ));
+
     /*
      * Shared Memory (SHM) module -- window setup and host-access interrupt
      * for the MMBI buffers in RAM3.  GIC SPI 11.
@@ -899,7 +921,6 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.vdmx",         0xe0800000,   4 * KiB);
     create_unimplemented_device("npcm8xx.pcierc",       0xe1000000,  64 * KiB);
     create_unimplemented_device("npcm8xx.rootc",        0xe8000000, 128 * MiB);
-    create_unimplemented_device("npcm8xx.kcs",          0xf0007000,   4 * KiB);
     create_unimplemented_device("npcm8xx.gfxi",         0xf000e000,   4 * KiB);
     create_unimplemented_device("npcm8xx.fsw",          0xf000f000,   4 * KiB);
     create_unimplemented_device("npcm8xx.bt",           0xf0030000,   4 * KiB);
@@ -974,7 +995,7 @@ static void npcm8xx_realize(DeviceState *dev, Error **errp)
     create_unimplemented_device("npcm8xx.spixcs0",      0xf8000000,  16 * MiB);
     create_unimplemented_device("npcm8xx.spixcs1",      0xf9000000,  16 * MiB);
     create_unimplemented_device("npcm8xx.spix",         0xfb001000,   4 * KiB);
-    create_unimplemented_device("npcm8xx.vect",         0xffff0000,   256);
+    /* npcm8xx.vect (0xffff0000, 256 B) removed: now covered by irom above. */
 }
 
 static const Property npcm8xx_properties[] = {

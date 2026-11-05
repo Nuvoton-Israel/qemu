@@ -918,8 +918,9 @@ static void npcm_clk_write(void *opaque, hwaddr offset,
     case NPCM7XX_CLK_CLKDIV1:
     case NPCM7XX_CLK_CLKDIV2:
     case NPCM7XX_CLK_CLKDIV3:
+        s->regs[reg] = value;
         npcm7xx_clk_update_all_dividers(s);
-        break;
+        return;
 
     case NPCM7XX_CLK_CNTR25M:
         qemu_log_mask(LOG_GUEST_ERROR,

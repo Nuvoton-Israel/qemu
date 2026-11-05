@@ -56,6 +56,7 @@ Supported devices
  * Ethernet controller (EMC)
  * Tachometer
  * Peripheral SPI controller (PSPI)
+ * BMC-side KCS channels 1-3 (NPCM845; simulated host access via QMP)
 
 Missing devices
 ---------------
@@ -63,7 +64,7 @@ Missing devices
  * LPC/eSPI host-to-BMC interface, including
 
    * Keyboard and mouse controller interface (KBCI)
-   * Keyboard Controller Style (KCS) channels
+   * Keyboard Controller Style (KCS) channels on NPCM7XX
    * BIOS POST code FIFO
    * System Wake-up Control (SWC)
    * Shared memory (SHM)
@@ -89,6 +90,13 @@ Missing devices
  * Virtual UART (8XX only)
  * Flash monitor (8XX only)
  * JTAG master (8XX only)
+
+NPCM845 KCS
+-----------
+
+NPCM845 KCS channels 1-3 are implemented with QMP host access. See
+:doc:`NPCM845 KCS <npcm-kcs-brief>` for the register
+map and SCI/SMI behavior.
 
 Boot options
 ------------
